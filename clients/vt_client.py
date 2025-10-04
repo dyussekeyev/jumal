@@ -21,24 +21,17 @@ class VTClient:
     """
     VirusTotal V3 API client (subset for JUMAL).
 
-    Endpoints used:
+    Endpoints used now:
       - /files/{hash}
       - /files/{hash}/behaviours
-      - /files/{hash}/behaviour_mitre_trees      (SUMMARY OF MITRE ATT&CK)
+      - /files/{hash}/behaviour_mitre_trees
       - /files/{hash}/comments
-      - /files/{hash}/crowdsourced_yara_rulesets
-      - /files/{hash}/crowdsourced_sigma_rules
+
+    YARA / Sigma больше не дергаются отдельными запросами — их результаты парсятся из поведения.
 
     Backward-compatible aliases:
       - get_behaviour() -> get_behaviours()
-      - get_attack_techniques() -> get_behaviour_mitre_trees()   (deprecated)
-      - get_yara_ruleset() -> get_crowdsourced_yara_rulesets()
-      - get_sigma_rules() -> get_crowdsourced_sigma_rules()
-
-    Unified success schema:
-      {"ok": True, "status": 200, "data": <json dict>}
-    Not found:
-      {"ok": False, "status": 404, "error": "not_found"}
+      - get_attack_techniques() -> get_behaviour_mitre_trees()  (deprecated)
     """
 
     RATE_LIMIT_SLEEP_ON_429 = 15
@@ -170,35 +163,17 @@ class VTClient:
         return self._request("GET", f"/files/{h}/behaviours")
 
     def get_behaviour_mitre_trees(self, h: str) -> Dict[str, Any]:
-        """
-        Correct endpoint for MITRE ATT&CK summary:
-        /files/{hash}/behaviour_mitre_trees
-        """
         return self._request("GET", f"/files/{h}/behaviour_mitre_trees")
 
     def get_comments(self, h: str, limit: int = 20) -> Dict[str, Any]:
         limit = max(1, min(limit, 40))
         return self._request("GET", f"/files/{h}/comments", params={"limit": limit})
 
-    def get_crowdsourced_yara_rulesets(self, h: str) -> Dict[str, Any]:
-        return self._request("GET", f"/files/{h}/crowdsourced_yara_rulesets")
-
-    def get_crowdsourced_sigma_rules(self, h: str) -> Dict[str, Any]:
-        return self._request("GET", f"/files/{h}/crowdsourced_sigma_rules")
-
     # ---------------- Backward-Compatible Aliases ----------------
 
     def get_behaviour(self, h: str) -> Dict[str, Any]:
         return self.get_behaviours(h)
 
-    # Deprecated alias: old code asked "attack_techniques"
     def get_attack_techniques(self, h: str) -> Dict[str, Any]:
-        # Redirect to the correct endpoint
-        self.logger.debug("[VT] get_attack_techniques() called → redirecting to behaviour_mitre_trees")
+        self.logger.debug("[VT] get_attack_techniques() deprecated → behaviour_mitre_trees")
         return self.get_behaviour_mitre_trees(h)
-
-    def get_yara_ruleset(self, h: str) -> Dict[str, Any]:
-        return self.get_crowdsourced_yara_rulesets(h)
-
-    def get_sigma_rules(self, h: str) -> Dict[str, Any]:
-        return self.get_crowdsourced_sigma_rules(h)
