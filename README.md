@@ -190,6 +190,179 @@ Edit key fields inside the UI Config tab or manually in file.
 - `llm.ioc_raw_user_template`: Template for IOC extraction prompt. Use `{CONTEXT}` placeholder for aggregated data.
 - `ui.default_language`: Set UI language (en/ru/kz). The LLM will adapt its responses to match the selected language.
 
+**Model-Specific Prompt Adaptation**:
+- JUMAL automatically selects optimized prompts based on the model you're using
+- For Llama 3.2 3B models, optimized prompts are automatically applied (see "Model-Specific Prompt Examples" below)
+- Model-specific prompts take precedence over generic `system_prompt` and `ioc_raw_system_prompt` settings
+- To override automatic selection, set custom values for `system_prompt`, `ioc_raw_system_prompt`, and `ioc_raw_user_template`
+- Backward compatible: existing custom prompts continue to work without changes
+
+---
+
+## Model-Specific Prompt Examples
+
+JUMAL provides optimized prompts for different LLM models. Below are copy-paste ready configurations for popular models.
+
+### Meta Llama 3.2 3B (Optimized for Low Parameter Count)
+
+**Best for**: Cost-effective, fast analysis with token efficiency
+
+**Configuration**:
+```json
+{
+  "llm": {
+    "provider_url": "https://api.together.xyz/v1",
+    "api_key": "YOUR_API_KEY",
+    "model": "meta-llama/Llama-3.2-3B-Instruct",
+    "system_prompt_llama_3_2_3b": "You are a malware analysis assistant optimized for efficient, accurate assessments.\n\nCRITICAL RULES:\n1. Output JSON FIRST (strict format, no markdown fences)\n2. Use exact field names: verdict, confidence, key_capabilities, mitre_techniques, recommended_actions, raw_summary\n3. NO speculation - only factual analysis from provided data\n4. Keep responses token-efficient and focused\n5. Avoid hallucination - if uncertain, state \"unknown\" or omit\n\nAfter JSON, provide concise technical analysis.",
+    "ioc_raw_system_prompt_llama_3_2_3b": "You are a DFIR assistant specialized in IOC extraction.\n\nRULES:\n1. Extract ONLY factual indicators from provided data\n2. Use markdown headings (##) for sections\n3. List each unique indicator once with bullet points (-)\n4. NO analysis or speculation\n5. If section empty, write \"(none found)\"\n6. Keep output clean and copy-ready",
+    "ioc_raw_user_template_llama_3_2_3b": "Extract IOCs from malware behavior data below. Organize into markdown sections.\n\n{CONTEXT}\n\nRequired sections:\n## Processes\n## Network IPs\n## Network Domains\n## URLs\n## File Paths\n## Registry Keys\n## Mutexes\n## YARA Rules\n## Sigma Rules\n## Other IOCs\n\nFormat: Brief intro, then bullet list (-) of unique indicators. Write \"(none found)\" for empty sections.",
+    "stream_enabled": true
+  }
+}
+```
+
+**Rationale**: Llama 3.2 3B has 3 billion parameters, requiring explicit JSON-first instructions, anti-hallucination rules, and token-efficient prompts. Optimized for deterministic extraction with minimal speculation.
+
+---
+
+### Meta Llama 3.1 70B (High Capability)
+
+**Best for**: In-depth analysis with broader reasoning
+
+**Configuration**:
+```json
+{
+  "llm": {
+    "provider_url": "https://api.together.xyz/v1",
+    "api_key": "YOUR_API_KEY",
+    "model": "meta-llama/Meta-Llama-3.1-70B-Instruct",
+    "system_prompt": "You are an expert malware analysis assistant. Provide comprehensive, structured assessments with deep technical insights. Focus on accuracy and thorough capability analysis. Output JSON first, then detailed analysis.",
+    "ioc_raw_system_prompt": "You are a DFIR assistant specializing in malware analysis. Extract and present Indicators of Compromise (IOCs) from malware behavior data in a clear, structured markdown format. Focus on factual indicators only - no speculation or analysis.",
+    "ioc_raw_user_template": "Based on the following malware behavior data, extract and organize all Indicators of Compromise into a clear markdown report.\n\n{CONTEXT}\n\nPlease organize the IOCs into the following sections using markdown headings (##). Include a brief introductory sentence, then list indicators using bullet points (-). If a section has no indicators, write \"(none found)\".\n\nRequired sections:\n- ## Processes\n- ## Network IPs\n- ## Network Domains\n- ## URLs\n- ## File Paths\n- ## Registry Keys\n- ## Mutexes\n- ## YARA Rules\n- ## Sigma Rules\n- ## Other IOCs\n\nKeep the format clean and easy to copy. List each unique indicator once.",
+    "stream_enabled": true
+  }
+}
+```
+
+**Rationale**: Llama 3.1 70B can handle more complex reasoning and longer contexts. Less restrictive prompts allow for richer analysis while maintaining structured output.
+
+---
+
+### OpenAI GPT-4o (Flagship Performance)
+
+**Best for**: Highest quality analysis, complex malware families
+
+**Configuration**:
+```json
+{
+  "llm": {
+    "provider_url": "https://api.openai.com/v1",
+    "api_key": "YOUR_OPENAI_KEY",
+    "model": "gpt-4o",
+    "system_prompt": "You are an expert malware analysis assistant with deep knowledge of threat intelligence, malware families, and attack techniques. Provide accurate, actionable security assessments. Always output valid JSON first with required fields, then comprehensive analysis.",
+    "ioc_raw_system_prompt": "You are a DFIR (Digital Forensics and Incident Response) assistant specializing in malware analysis. Your task is to extract and present Indicators of Compromise (IOCs) from malware behavior data in a clear, structured markdown format. Focus on factual indicators only - no speculation or analysis.",
+    "ioc_raw_user_template": "Based on the following malware behavior data, extract and organize all Indicators of Compromise into a clear markdown report.\n\n{CONTEXT}\n\nPlease organize the IOCs into the following sections using markdown headings (##). Include a brief introductory sentence, then list indicators using bullet points (-). If a section has no indicators, write \"(none found)\".\n\nRequired sections:\n- ## Processes\n- ## Network IPs\n- ## Network Domains\n- ## URLs\n- ## File Paths\n- ## Registry Keys\n- ## Mutexes\n- ## YARA Rules\n- ## Sigma Rules\n- ## Other IOCs\n\nKeep the format clean and easy to copy. List each unique indicator once.",
+    "stream_enabled": true
+  }
+}
+```
+
+**Rationale**: GPT-4o excels at nuanced understanding and can correlate complex behaviors. Prompts emphasize expertise and actionable intelligence.
+
+---
+
+### OpenAI GPT-4.1 (Latest Flagship)
+
+**Best for**: Cutting-edge reasoning, latest capabilities
+
+**Configuration**: Same as GPT-4o above, but set `"model": "gpt-4.1"`
+
+**Rationale**: Similar to GPT-4o with potential improvements in reasoning and efficiency.
+
+---
+
+### OpenAI GPT-4o-mini (Cost-Effective)
+
+**Best for**: Budget-friendly analysis, high-volume processing
+
+**Configuration**:
+```json
+{
+  "llm": {
+    "provider_url": "https://api.openai.com/v1",
+    "api_key": "YOUR_OPENAI_KEY",
+    "model": "gpt-4o-mini",
+    "system_prompt": "You are a malware analysis assistant. Provide concise, structured malware assessments. Output JSON first with required fields (verdict, confidence, key_capabilities, mitre_techniques, recommended_actions, raw_summary), then brief analysis. Be factual and avoid speculation.",
+    "ioc_raw_system_prompt": "You are a DFIR assistant specializing in malware analysis. Extract and present Indicators of Compromise (IOCs) from malware behavior data in a clear, structured markdown format. Focus on factual indicators only - no speculation or analysis.",
+    "ioc_raw_user_template": "Based on the following malware behavior data, extract and organize all Indicators of Compromise into a clear markdown report.\n\n{CONTEXT}\n\nPlease organize the IOCs into the following sections using markdown headings (##). Include a brief introductory sentence, then list indicators using bullet points (-). If a section has no indicators, write \"(none found)\".\n\nRequired sections:\n- ## Processes\n- ## Network IPs\n- ## Network Domains\n- ## URLs\n- ## File Paths\n- ## Registry Keys\n- ## Mutexes\n- ## YARA Rules\n- ## Sigma Rules\n- ## Other IOCs\n\nKeep the format clean and easy to copy. List each unique indicator once.",
+    "stream_enabled": true
+  }
+}
+```
+
+**Rationale**: GPT-4o-mini balances cost and capability. Prompts emphasize conciseness and factual extraction to maximize value per token.
+
+---
+
+### Google Gemini 1.5 Pro (Large Context Window)
+
+**Best for**: Analysis of samples with extensive behavior data
+
+**Configuration**:
+```json
+{
+  "llm": {
+    "provider_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+    "api_key": "YOUR_GOOGLE_API_KEY",
+    "model": "gemini-1.5-pro",
+    "system_prompt": "You are a malware analysis assistant specialized in processing large behavior datasets. Provide thorough, structured assessments. Output JSON first with exact fields: verdict, confidence, key_capabilities, mitre_techniques, recommended_actions, raw_summary. Then provide detailed analysis incorporating all available context.",
+    "ioc_raw_system_prompt": "You are a DFIR assistant specializing in malware analysis. Extract and present Indicators of Compromise (IOCs) from malware behavior data in a clear, structured markdown format. Leverage large context to capture all relevant indicators. Focus on factual indicators only - no speculation or analysis.",
+    "ioc_raw_user_template": "Based on the following malware behavior data, extract and organize all Indicators of Compromise into a clear markdown report.\n\n{CONTEXT}\n\nPlease organize the IOCs into the following sections using markdown headings (##). Include a brief introductory sentence, then list indicators using bullet points (-). If a section has no indicators, write \"(none found)\".\n\nRequired sections:\n- ## Processes\n- ## Network IPs\n- ## Network Domains\n- ## URLs\n- ## File Paths\n- ## Registry Keys\n- ## Mutexes\n- ## YARA Rules\n- ## Sigma Rules\n- ## Other IOCs\n\nKeep the format clean and easy to copy. List each unique indicator once.",
+    "stream_enabled": true
+  }
+}
+```
+
+**Rationale**: Gemini 1.5 Pro's multi-million token context window handles extensive behavior logs effectively. Prompts encourage comprehensive indicator extraction.
+
+---
+
+### Google Gemini 1.5 Flash (Speed & Efficiency)
+
+**Best for**: Fast triage, real-time analysis
+
+**Configuration**:
+```json
+{
+  "llm": {
+    "provider_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+    "api_key": "YOUR_GOOGLE_API_KEY",
+    "model": "gemini-1.5-flash",
+    "system_prompt": "You are a malware analysis assistant optimized for rapid assessment. Provide clear, concise structured output. JSON first with required fields, then brief targeted analysis. Focus on key findings and actionable insights.",
+    "ioc_raw_system_prompt": "You are a DFIR assistant specializing in rapid IOC extraction. Extract and present Indicators of Compromise (IOCs) from malware behavior data in a clear, structured markdown format. Focus on factual indicators only - no speculation or analysis. Prioritize speed and clarity.",
+    "ioc_raw_user_template": "Extract IOCs quickly from the malware behavior data below. Organize into markdown sections.\n\n{CONTEXT}\n\nRequired sections:\n## Processes\n## Network IPs\n## Network Domains\n## URLs\n## File Paths\n## Registry Keys\n## Mutexes\n## YARA Rules\n## Sigma Rules\n## Other IOCs\n\nFormat: Brief intro, bullet list (-) of unique indicators. Write \"(none found)\" for empty sections.",
+    "stream_enabled": true
+  }
+}
+```
+
+**Rationale**: Gemini 1.5 Flash prioritizes latency. Prompts are streamlined for rapid processing while maintaining accuracy.
+
+---
+
+### General Prompt Design Principles
+
+All prompts across models follow these anti-hallucination guidelines:
+1. **JSON-first output**: Structured data before free-form text ensures parseable results
+2. **Explicit field requirements**: Prevent model from inventing new fields
+3. **Factual focus**: "No speculation" and "only from provided data" clauses reduce hallucination
+4. **Clear section structure**: Markdown headings and bullet lists improve consistency
+5. **Language adaptation**: Built-in locale support ensures UI language matches analysis language
+6. **Fallback handling**: "(none found)" for empty sections prevents fabrication
+
+Users can override any prompt by setting `system_prompt`, `ioc_raw_system_prompt`, or `ioc_raw_user_template` in their config.json.
+
 ---
 
 ## Installation & Run
