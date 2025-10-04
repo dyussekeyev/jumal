@@ -2,17 +2,21 @@ from typing import Dict, Any
 
 class Aggregator:
     """
-    Aggregates raw VirusTotal responses into a normalized structure.
-    Expects each VT call to return the unified dict:
-      {"ok": bool, "status": int, "data": {...}} OR {"ok": False, "status": 404, "error": "not_found"}
-    Legacy (raw JSON) still tolerated for backward compatibility.
+    Aggregates VirusTotal responses into a normalized structure.
+
+    Expects each VT call possibly wrapped as:
+      {"ok": True, "status": 200, "data": {...}}
+    or {"ok": False, "status": 404/403, "error": "..."}
+    or legacy raw dict.
+
+    Pulls MITRE techniques from behaviour_mitre_trees (new)
+    but still accepts legacy 'attack_techniques' key for backward compatibility.
     """
 
     def __init__(self, logger):
         self.logger = logger
 
     def _unwrap(self, node):
-        # Accept either new wrapper or legacy
         if isinstance(node, dict) and node.get("ok") and "data" in node:
             return node["data"]
         return node
@@ -36,19 +40,32 @@ class Aggregator:
         type_description = attributes.get("type_description")
         names = attributes.get("names", [])[:10]
 
-        attack_node = self._unwrap(vt_data.get("attack_techniques", {}))
-        mitre_data = []
-        if isinstance(attack_node, dict):
-            mitre_data = attack_node.get("data", []) or attack_node.get("attack_techniques", []) or []
+        # --- MITRE via behaviour_mitre_trees ---
+        mitre_node = self._unwrap(
+            vt_data.get("behaviour_mitre_trees") or
+            vt_data.get("attack_techniques") or
+            {}
+        )
 
         mitre_list = []
-        for t in mitre_data:
-            attr = t.get("attributes", {}) if isinstance(t, dict) else {}
-            tid = attr.get("technique_id")
-            if tid:
-                name = attr.get("technique")
-                mitre_list.append(f"{tid} {name}" if name else tid)
+        if isinstance(mitre_node, dict):
+            # The VT endpoint typically returns { "data": [ { "attributes": {...} } ] }
+            data_list = mitre_node.get("data") or []
+            for t in data_list:
+                attr = t.get("attributes", {}) if isinstance(t, dict) else {}
+                tid = attr.get("technique_id")
+                tname = attr.get("technique")
+                tactic = attr.get("tactic")
+                # Build readable label
+                if tid:
+                    label = f"{tid}"
+                    if tname:
+                        label += f" {tname}"
+                    if tactic:
+                        label += f" (tactic: {tactic})"
+                    mitre_list.append(label)
 
+        # Comments
         comments_node = self._unwrap(vt_data.get("comments", {}))
         comments_raw = []
         if isinstance(comments_node, dict):
@@ -59,7 +76,10 @@ class Aggregator:
             text = attr.get("text", "")
             comments_list.append(text[:300])
 
-        behaviours_node = self._unwrap(vt_data.get("behaviour") or vt_data.get("behaviours") or {})
+        # Behaviours (sandbox)
+        behaviours_node = self._unwrap(
+            vt_data.get("behaviour") or vt_data.get("behaviours") or {}
+        )
         processes = []
         network = []
         if isinstance(behaviours_node, dict):
@@ -80,8 +100,16 @@ class Aggregator:
                             if ip:
                                 network.append(ip)
 
-        yara_node = self._unwrap(vt_data.get("yara_ruleset") or vt_data.get("yara_rulesets") or vt_data.get("crowdsourced_yara_rulesets"))
-        sigma_node = self._unwrap(vt_data.get("sigma_rules") or vt_data.get("crowdsourced_sigma_rules"))
+        # YARA / Sigma
+        yara_node = self._unwrap(
+            vt_data.get("yara_ruleset") or
+            vt_data.get("yara_rulesets") or
+            vt_data.get("crowdsourced_yara_rulesets")
+        )
+        sigma_node = self._unwrap(
+            vt_data.get("sigma_rules") or
+            vt_data.get("crowdsourced_sigma_rules")
+        )
 
         return {
             "basic": {
@@ -98,6 +126,6 @@ class Aggregator:
             "comments": comments_list,
             "processes": processes,
             "network": network,
-            "yara_ruleset": yara_node if yara_node and not isinstance(yara_node, dict) or (isinstance(yara_node, dict) and yara_node) else None,
-            "sigma_rules": sigma_node if sigma_node and not isinstance(sigma_node, dict) or (isinstance(sigma_node, dict) and sigma_node) else None
+            "yara_ruleset": yara_node if yara_node else None,
+            "sigma_rules": sigma_node if sigma_node else None
         }
