@@ -132,10 +132,15 @@ JUMAL uses a **dual LLM approach** for comprehensive malware analysis:
 - Dedicated prompt for extracting structured Indicators of Compromise.
 - Non-streaming call with `temperature=0` for deterministic output.
 - Optional separate model configuration via `llm.ioc_model` in config (fallback to main model if not set).
-- Input context: processes, network, comments, YARA/Sigma results, basic metadata.
+- Input context: processes, network, comments, YARA/Sigma results, basic metadata (truncated to save tokens).
 - Output: Strict JSON schema with 10 IOC categories (process names, IPs, domains, URLs, file paths, registry keys, mutexes, YARA rules, Sigma rules, other IOCs).
-- Parsing enforces uniqueness and limits (max 100 items per category).
-- Graceful error handling: if IOC extraction fails, displays warning in Indicators tab with fallback data.
+- **Configurable prompts**: System prompt and prompt template can be customized via config (use `{CONTEXT}` and `{SCHEMA}` placeholders).
+- **JSON markers**: Uses `BEGIN_IOC_JSON` and `END_IOC_JSON` markers for robust parsing, with fallback to regex extraction.
+- **JSON mode support**: When `use_json_mode` is `true`, includes `response_format={"type":"json_object"}` for OpenAI-compatible providers to enforce JSON output.
+- **Retry logic**: If first IOC extraction produces malformed JSON and `ioc_retry_enabled` is `true`, automatically retries with a repair prompt.
+- **Normalization**: Enforces uniqueness, limits (max 100 items per category), and string truncation (≤300 chars).
+- **Error handling**: If IOC extraction fails after retry, displays warning in Indicators tab with fallback data and error details.
+- **Report inclusion**: IOC results saved under `ioc_summary` key in JSON reports with metadata (attempts, raw response excerpt).
 
 ---
 
@@ -155,9 +160,13 @@ Example:
     "provider_url": "https://api.openai.com/v1",
     "api_key": "YOUR_LLM_KEY",
     "model": "gpt-4o-mini",
-    "ioc_model": null,
     "system_prompt": "You are a malware analysis assistant...",
-    "stream_enabled": true
+    "stream_enabled": true,
+    "ioc_model": null,
+    "ioc_system_prompt": "You are a DFIR assistant. Extract only factual Indicators of Compromise.",
+    "ioc_prompt_template": "### CONTEXT\n{CONTEXT}\n\n### OUTPUT\nReturn ONLY JSON between markers:\nBEGIN_IOC_JSON\n{SCHEMA}\nEND_IOC_JSON\nRules:\n- Keep EXACT keys.\n- Strings only.\n- No duplicates.\n- Empty arrays as [].\n- No extra keys.",
+    "ioc_retry_enabled": true,
+    "use_json_mode": true
   },
   "ui": {
     "default_language": "en"
@@ -181,6 +190,10 @@ Edit key fields inside the UI Config tab or manually in file.
 **Configuration Notes**:
 - `llm.ioc_model`: Optional. If set to `null` or omitted, the main `llm.model` is used for IOC extraction. You can specify a different model (e.g., a faster/cheaper model) for the non-streaming IOC extraction pass.
 - `llm.stream_enabled`: Applies only to the first LLM pass (main analysis). IOC extraction is always non-streaming.
+- `llm.ioc_system_prompt`: System prompt for the IOC extraction pass. Customize to adjust IOC extraction behavior.
+- `llm.ioc_prompt_template`: Template for the IOC extraction prompt. Use `{CONTEXT}` and `{SCHEMA}` placeholders. Supports markers `BEGIN_IOC_JSON` and `END_IOC_JSON` for robust parsing.
+- `llm.ioc_retry_enabled`: If `true`, retries IOC extraction with a repair prompt if the first attempt produces malformed JSON (default: `true`).
+- `llm.use_json_mode`: If `true` and the provider is OpenAI-compatible, includes `response_format={"type":"json_object"}` in the API call for structured JSON output (default: `true`).
 
 ---
 
@@ -219,16 +232,20 @@ python main.py
     "free_text": "Extended analysis..."
   },
   "ioc_summary": {
-    "process_names": ["cmd.exe", "powershell.exe"],
-    "network_ips": ["192.168.1.1", "10.0.0.1"],
-    "network_domains": ["evil.com", "malware.net"],
-    "urls": ["http://evil.com/payload"],
-    "file_paths": ["C:\\temp\\malware.exe"],
-    "registry_keys": ["HKLM\\Software\\Malware"],
-    "mutexes": ["Global\\MalwareMutex"],
-    "yara_rules": ["MalwareRule1", "MalwareRule2"],
-    "sigma_rules": ["SuspiciousCommand"],
-    "other_iocs": ["PDB path", "...")"]
+    "iocs": {
+      "process_names": ["cmd.exe", "powershell.exe"],
+      "network_ips": ["192.168.1.1", "10.0.0.1"],
+      "network_domains": ["evil.com", "malware.net"],
+      "urls": ["http://evil.com/payload"],
+      "file_paths": ["C:\\temp\\malware.exe"],
+      "registry_keys": ["HKLM\\Software\\Malware"],
+      "mutexes": ["Global\\MalwareMutex"],
+      "yara_rules": ["MalwareRule1", "MalwareRule2"],
+      "sigma_rules": ["SuspiciousCommand"],
+      "other_iocs": ["PDB path", "..."]
+    },
+    "raw_response": "...truncated LLM response...",
+    "attempts": 1
   },
   "meta": {
     "generator": "JUMAL 0.1",

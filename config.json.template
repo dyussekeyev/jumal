@@ -10,9 +10,13 @@
     "provider_url": "https://api.openai.com/v1",
     "api_key": "PUT_YOUR_LLM_API_KEY_HERE",
     "model": "gpt-4o-mini",
-    "ioc_model": null,
     "system_prompt": "You are a malware analysis assistant. Provide concise, structured malware assessments.",
-    "stream_enabled": true
+    "stream_enabled": true,
+    "ioc_model": null,
+    "ioc_system_prompt": "You are a DFIR assistant. Extract only factual Indicators of Compromise.",
+    "ioc_prompt_template": "### CONTEXT\n{CONTEXT}\n\n### OUTPUT\nReturn ONLY JSON between markers:\nBEGIN_IOC_JSON\n{SCHEMA}\nEND_IOC_JSON\nRules:\n- Keep EXACT keys.\n- Strings only.\n- No duplicates.\n- Empty arrays as [].\n- No extra keys.",
+    "ioc_retry_enabled": true,
+    "use_json_mode": true
   },
   "ui": {
     "default_language": "en"
