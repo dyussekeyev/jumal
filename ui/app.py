@@ -7,16 +7,26 @@ import os
 from typing import Dict, Any
 from core.hashutil import detect_hash_type
 from clients.vt_client import VTClient, VTAuthError
-from clients.llm_client import LLMClient
+from clients.llm_client import (
+    LLMClient,
+    LLMAuthError,
+    LLMBadRequestError,
+    LLMServerError,
+    LLMClientError
+)
 from core.aggregator import Aggregator
 from core.summarizer import Summarizer
 
+# Optional VT enrichment endpoints we query (all treated as non-fatal if forbidden):
+#   behaviour              -> sandbox behaviour reports
+#   behaviour_mitre_trees  -> MITRE ATT&CK summary
+#   comments               -> latest comments
 OPTIONAL_ENDPOINTS = [
     ("behaviour", "msg_fetch_behaviour", "get_behaviour"),
     ("behaviour_mitre_trees", "msg_fetch_mitre", "get_behaviour_mitre_trees"),
-    ("yara_ruleset", "msg_fetch_yara", "get_yara_ruleset"),
-    ("sigma_rules", "msg_fetch_sigma", "get_sigma_rules")
+    ("comments", "msg_fetch_comments", "get_comments")
 ]
+
 
 class JUMALApp:
     def __init__(self, config_manager, logger):
@@ -41,7 +51,7 @@ class JUMALApp:
         self._progress_stage = tk.StringVar(value="Idle")
         self._status_message(self._t("status_idle"))
 
-    # i18n
+    # ------------- Internationalization -------------
     def _load_languages(self):
         lang_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "..", "i18n")
         for fname in ("en.json", "ru.json", "kz.json"):
@@ -58,6 +68,7 @@ class JUMALApp:
     def _t(self, key: str):
         return self.lang_data.get(self.current_lang, {}).get(key, key)
 
+    # ------------- Clients -------------
     def _init_clients(self):
         vt_cfg = self.config.get("virustotal", {})
         net_cfg = self.config.get("network", {})
@@ -81,6 +92,7 @@ class JUMALApp:
             logger=self.logger
         )
 
+    # ------------- UI Construction -------------
     def _init_ui(self):
         self.notebook = ttk.Notebook(self.root)
         self.frame_summary = ttk.Frame(self.notebook)
@@ -94,7 +106,7 @@ class JUMALApp:
         self.notebook.add(self.frame_config, text="Config")
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
-        # Top panel summary
+        # Summary top controls
         top_frame = ttk.Frame(self.frame_summary)
         top_frame.pack(fill=tk.X, pady=5, padx=5)
         ttk.Label(top_frame, text=self._t("label_hash")).pack(side=tk.LEFT)
@@ -107,9 +119,11 @@ class JUMALApp:
         self.text_summary = scrolledtext.ScrolledText(self.frame_summary, wrap=tk.WORD)
         self.text_summary.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
+        # Indicators / Rules tab
         self.text_indicators = scrolledtext.ScrolledText(self.frame_indicators, wrap=tk.WORD)
         self.text_indicators.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
+        # Raw tab
         self.text_raw = scrolledtext.ScrolledText(self.frame_raw, wrap=tk.WORD)
         self.text_raw.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
@@ -149,6 +163,7 @@ class JUMALApp:
         ttk.Label(cfg_frame, text=self._t("disclaimer")).grid(row=row, column=1, sticky="w")
         row += 1
 
+        # Status bar
         status_frame = ttk.Frame(self.root)
         status_frame.pack(fill=tk.X, side=tk.BOTTOM)
         self.status_label = ttk.Label(status_frame, text="")
@@ -156,6 +171,7 @@ class JUMALApp:
         self.progress = ttk.Progressbar(status_frame, mode="indeterminate")
         self.progress.pack(side=tk.RIGHT, padx=5)
 
+    # ------------- Helpers -------------
     def _status_message(self, msg: str):
         self.status_label.config(text=msg)
         self.root.update_idletasks()
@@ -164,6 +180,7 @@ class JUMALApp:
         t = threading.Thread(target=task, daemon=True)
         t.start()
 
+    # ------------- Event Handlers -------------
     def _on_get_report(self):
         h = self.entry_hash.get().strip()
         ht = detect_hash_type(h)
@@ -182,19 +199,22 @@ class JUMALApp:
             vt_data = {}
             self._append_summary(f"[*] {self._t('msg_fetch_file_report')}\n")
             file_report = self.vt_client.get_file_report(h)
-            if file_report.get("ok") is False and file_report.get("status") == 404 or file_report.get("not_found"):
+            if (file_report.get("ok") is False and file_report.get("status") == 404) or file_report.get("not_found"):
                 self._append_summary(self._t("msg_not_found"))
                 self._status_message(self._t("status_done"))
                 self.progress.stop()
                 return
             vt_data["file_report"] = file_report
 
-            # Optional endpoints (graceful degradation)
+            # Optional endpoints (behaviour, mitre, comments)
             for key, i18n_fetch_msg, method_name in OPTIONAL_ENDPOINTS:
                 self._append_summary(f"[*] {self._t(i18n_fetch_msg)}\n")
                 try:
                     method = getattr(self.vt_client, method_name)
-                    vt_data[key] = method(h)
+                    if key == "comments":
+                        vt_data[key] = method(h, limit=20)
+                    else:
+                        vt_data[key] = method(h)
                 except VTAuthError:
                     self.logger.warning(f"Forbidden: {method_name} for hash {h}")
                     self._append_summary(f"[!] {method_name} forbidden (403 - insufficient privileges)\n")
@@ -205,21 +225,41 @@ class JUMALApp:
                     vt_data[key] = {"ok": False, "status": 0, "error": str(e)}
 
             aggregated = self.aggregator.build_struct(vt_data)
-            prompt = self.summarizer.build_prompt(self.config.get("llm", {}).get("system_prompt", ""), aggregated)
+            prompt = self.summarizer.build_prompt(
+                self.config.get("llm", {}).get("system_prompt", ""),
+                aggregated
+            )
 
+            # Show raw VT composite
             self._append_raw(json.dumps(vt_data, indent=2) + "\n")
             self._append_summary(f"\n[*] {self._t('msg_llm_start')}\n")
 
             # LLM streaming
             content_parts = []
-            for chunk in self.llm_client.stream_chat(prompt):
-                content_parts.append(chunk)
-                self.text_summary.insert(tk.END, chunk)
-                self.text_summary.see(tk.END)
-                time.sleep(0.005)
+            try:
+                for chunk in self.llm_client.stream_chat(prompt):
+                    content_parts.append(chunk)
+                    self.text_summary.insert(tk.END, chunk)
+                    self.text_summary.see(tk.END)
+                    # slight pause for UI responsiveness
+                    time.sleep(0.005)
+            except LLMAuthError as e:
+                self.logger.error("LLM auth error")
+                self._append_summary(f"\n[!] LLM auth error: {e}\n")
+                self._status_message(self._t("status_error"))
+                self.progress.stop()
+                return
+            except (LLMBadRequestError, LLMServerError, LLMClientError) as e:
+                self.logger.error("LLM request error")
+                self._append_summary(f"\n[!] LLM request failed: {e}\n")
+                self._status_message(self._t("status_error"))
+                self.progress.stop()
+                return
+
             full = "".join(content_parts)
             parsed_json, free_text = self.summarizer.extract_json_and_text(full)
 
+            # Indicators tab build
             self._build_indicators_tab(aggregated)
 
             if parsed_json:
@@ -243,12 +283,35 @@ class JUMALApp:
         lines.append("\nNetwork:")
         for n in aggregated.get("network", []):
             lines.append(f"- {n}")
-        lines.append("\nYARA:")
+        lines.append("\nYARA (from behaviour):")
         yr = aggregated.get("yara_ruleset")
-        lines.append(("(none)" if not yr else json.dumps(yr)[:2000]))
-        lines.append("\nSIGMA:")
+        if not yr:
+            lines.append("(none)")
+        else:
+            # Display only rule names if structured list
+            if isinstance(yr, list):
+                for r in yr[:50]:
+                    if isinstance(r, dict):
+                        rn = r.get("rule_name") or r.get("rule") or r.get("name")
+                        lines.append(f"- {rn or str(r)[:80]}")
+                    else:
+                        lines.append(f"- {str(r)[:80]}")
+            else:
+                lines.append(str(yr)[:500])
+        lines.append("\nSIGMA (from behaviour):")
         sr = aggregated.get("sigma_rules")
-        lines.append(("(none)" if not sr else json.dumps(sr)[:2000]))
+        if not sr:
+            lines.append("(none)")
+        else:
+            if isinstance(sr, list):
+                for r in sr[:50]:
+                    if isinstance(r, dict):
+                        rn = r.get("rule_name") or r.get("title") or r.get("name")
+                        lines.append(f"- {rn or str(r)[:80]}")
+                    else:
+                        lines.append(f"- {str(r)[:80]}")
+            else:
+                lines.append(str(sr)[:500])
         self.text_indicators.insert(tk.END, "\n".join(lines))
 
     def _append_summary(self, text: str):
@@ -273,6 +336,7 @@ class JUMALApp:
         except Exception:
             vt_data = {}
 
+        # Attempt JSON extraction again for saving
         parsed_json = None
         free_text = content_summary
         import re, json as _json
