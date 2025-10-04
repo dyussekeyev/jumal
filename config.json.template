@@ -13,7 +13,6 @@
     "system_prompt": "You are a malware analysis assistant. Provide concise, structured malware assessments.",
     "stream_enabled": true,
     "ioc_model": null,
-    "ioc_raw_mode": true,
     "ioc_raw_system_prompt": "You are a DFIR (Digital Forensics and Incident Response) assistant specializing in malware analysis. Your task is to extract and present Indicators of Compromise (IOCs) from malware behavior data in a clear, structured markdown format. Focus on factual indicators only - no speculation or analysis.",
     "ioc_raw_user_template": "Based on the following malware behavior data, extract and organize all Indicators of Compromise into a clear markdown report.\n\n{CONTEXT}\n\nPlease organize the IOCs into the following sections using markdown headings (##). Include a brief introductory sentence, then list indicators using bullet points (-). If a section has no indicators, write \"(none found)\".\n\nRequired sections:\n- ## Processes\n- ## Network IPs\n- ## Network Domains\n- ## URLs\n- ## File Paths\n- ## Registry Keys\n- ## Mutexes\n- ## YARA Rules\n- ## Sigma Rules\n- ## Other IOCs\n\nKeep the format clean and easy to copy. List each unique indicator once."
   },

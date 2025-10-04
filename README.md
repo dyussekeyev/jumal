@@ -185,11 +185,12 @@ Edit key fields inside the UI Config tab or manually in file.
 
 **Configuration Notes**:
 - **GUI Editable Fields**: The following fields can now be edited directly in the GUI Config tab: `virustotal.base_url`, `llm.provider_url`, and `llm.model`. Changes are saved to `config.json` and take effect immediately after clicking Apply.
-- `llm.ioc_model`: Optional. If set to `null` or omitted, the main `llm.model` is used for IOC extraction. You can specify a different model (e.g., a faster/cheaper model) for the non-streaming IOC extraction pass.
+- `llm.ioc_model`: Optional. If omitted or set to `null`/empty, the application automatically sets `ioc_model` to the value of `model` upon load/save. This ensures the effective model is always explicit in the config and saved reports. You can specify a different model (e.g., a faster/cheaper model) for the non-streaming IOC extraction pass.
 - `llm.stream_enabled`: Applies only to the first LLM pass (main analysis). IOC extraction is always non-streaming.
 - `llm.ioc_raw_system_prompt`: System prompt for IOC extraction. Customize to adjust behavior.
 - `llm.ioc_raw_user_template`: Template for IOC extraction prompt. Use `{CONTEXT}` placeholder for aggregated data.
 - `ui.default_language`: Set UI language (en/ru/kz). The LLM will adapt its responses to match the selected language.
+- **Legacy Flag Removed**: The `ioc_raw_mode` flag has been removed. Raw markdown IOC extraction is now always enabled (previously controlled by this flag).
 
 ---
 
