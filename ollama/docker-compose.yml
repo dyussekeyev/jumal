@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    entrypoint: /bin/sh
+    command: -c "ollama serve & sleep 3 && ollama pull llama3.2:1b && wait"
+    restart: unless-stopped
+
+volumes:
+  ollama:
