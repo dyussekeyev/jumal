@@ -13,7 +13,7 @@ from core.summarizer import Summarizer
 
 OPTIONAL_ENDPOINTS = [
     ("behaviour", "msg_fetch_behaviour", "get_behaviour"),
-    ("attack_techniques", "msg_fetch_mitre", "get_attack_techniques"),
+    ("behaviour_mitre_trees", "msg_fetch_mitre", "get_behaviour_mitre_trees"),
     ("yara_ruleset", "msg_fetch_yara", "get_yara_ruleset"),
     ("sigma_rules", "msg_fetch_sigma", "get_sigma_rules")
 ]
