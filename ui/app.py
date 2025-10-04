@@ -1,15 +1,22 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext, filedialog
+from tkinter import ttk, messagebox, scrolledtext
 import threading
 import time
 import json
 import os
 from typing import Dict, Any
 from core.hashutil import detect_hash_type
-from clients.vt_client import VTClient
+from clients.vt_client import VTClient, VTAuthError
 from clients.llm_client import LLMClient
 from core.aggregator import Aggregator
 from core.summarizer import Summarizer
+
+OPTIONAL_ENDPOINTS = [
+    ("behaviour", "msg_fetch_behaviour", "get_behaviour"),
+    ("attack_techniques", "msg_fetch_mitre", "get_attack_techniques"),
+    ("yara_ruleset", "msg_fetch_yara", "get_yara_ruleset"),
+    ("sigma_rules", "msg_fetch_sigma", "get_sigma_rules")
+]
 
 class JUMALApp:
     def __init__(self, config_manager, logger):
@@ -100,11 +107,9 @@ class JUMALApp:
         self.text_summary = scrolledtext.ScrolledText(self.frame_summary, wrap=tk.WORD)
         self.text_summary.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # Indicators/Rules tab
         self.text_indicators = scrolledtext.ScrolledText(self.frame_indicators, wrap=tk.WORD)
         self.text_indicators.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # Raw tab
         self.text_raw = scrolledtext.ScrolledText(self.frame_raw, wrap=tk.WORD)
         self.text_raw.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
@@ -144,7 +149,6 @@ class JUMALApp:
         ttk.Label(cfg_frame, text=self._t("disclaimer")).grid(row=row, column=1, sticky="w")
         row += 1
 
-        # Status bar
         status_frame = ttk.Frame(self.root)
         status_frame.pack(fill=tk.X, side=tk.BOTTOM)
         self.status_label = ttk.Label(status_frame, text="")
@@ -178,34 +182,31 @@ class JUMALApp:
             vt_data = {}
             self._append_summary(f"[*] {self._t('msg_fetch_file_report')}\n")
             file_report = self.vt_client.get_file_report(h)
-            if file_report.get("not_found"):
+            if file_report.get("ok") is False and file_report.get("status") == 404 or file_report.get("not_found"):
                 self._append_summary(self._t("msg_not_found"))
                 self._status_message(self._t("status_done"))
                 self.progress.stop()
                 return
             vt_data["file_report"] = file_report
 
-            self._append_summary(f"[*] {self._t('msg_fetch_behaviour')}\n")
-            vt_data["behaviour"] = self.vt_client.get_behaviour(h)
-
-            self._append_summary(f"[*] {self._t('msg_fetch_mitre')}\n")
-            vt_data["attack_techniques"] = self.vt_client.get_attack_techniques(h)
-
-            self._append_summary(f"[*] {self._t('msg_fetch_comments')}\n")
-            vt_data["comments"] = self.vt_client.get_comments(h, limit=20)
-
-            self._append_summary(f"[*] {self._t('msg_fetch_yara')}\n")
-            yara = self.vt_client.get_yara_ruleset(h)
-            vt_data["yara_ruleset"] = None if yara.get("not_found") else yara
-
-            self._append_summary(f"[*] {self._t('msg_fetch_sigma')}\n")
-            sigma = self.vt_client.get_sigma_rules(h)
-            vt_data["sigma_rules"] = None if sigma.get("not_found") else sigma
+            # Optional endpoints (graceful degradation)
+            for key, i18n_fetch_msg, method_name in OPTIONAL_ENDPOINTS:
+                self._append_summary(f"[*] {self._t(i18n_fetch_msg)}\n")
+                try:
+                    method = getattr(self.vt_client, method_name)
+                    vt_data[key] = method(h)
+                except VTAuthError:
+                    self.logger.warning(f"Forbidden: {method_name} for hash {h}")
+                    self._append_summary(f"[!] {method_name} forbidden (403 - insufficient privileges)\n")
+                    vt_data[key] = {"ok": False, "status": 403, "error": "forbidden"}
+                except Exception as e:
+                    self.logger.exception(f"Error calling {method_name}")
+                    self._append_summary(f"[!] {method_name} error: {e}\n")
+                    vt_data[key] = {"ok": False, "status": 0, "error": str(e)}
 
             aggregated = self.aggregator.build_struct(vt_data)
             prompt = self.summarizer.build_prompt(self.config.get("llm", {}).get("system_prompt", ""), aggregated)
 
-            # Show raw
             self._append_raw(json.dumps(vt_data, indent=2) + "\n")
             self._append_summary(f"\n[*] {self._t('msg_llm_start')}\n")
 
@@ -215,11 +216,10 @@ class JUMALApp:
                 content_parts.append(chunk)
                 self.text_summary.insert(tk.END, chunk)
                 self.text_summary.see(tk.END)
-                time.sleep(0.01)
+                time.sleep(0.005)
             full = "".join(content_parts)
             parsed_json, free_text = self.summarizer.extract_json_and_text(full)
 
-            # Indicators tab
             self._build_indicators_tab(aggregated)
 
             if parsed_json:
@@ -273,10 +273,8 @@ class JUMALApp:
         except Exception:
             vt_data = {}
 
-        # attempt to parse summary JSON again
         parsed_json = None
         free_text = content_summary
-        # naive extraction for saving
         import re, json as _json
         m = re.search(r"\{.*?\}", content_summary, re.DOTALL)
         if m:
