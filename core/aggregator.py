@@ -1,16 +1,11 @@
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 class Aggregator:
     """
-    Aggregates VirusTotal responses into a normalized structure.
+    Aggregates VirusTotal responses into normalized structure.
 
-    Expects each VT call possibly wrapped as:
-      {"ok": True, "status": 200, "data": {...}}
-    or {"ok": False, "status": 404/403, "error": "..."}
-    or legacy raw dict.
-
-    Pulls MITRE techniques from behaviour_mitre_trees (new)
-    but still accepts legacy 'attack_techniques' key for backward compatibility.
+    MITRE: из behaviour_mitre_trees
+    YARA/Sigma: из поведения (crowdsourced_yara_results / crowdsourced_sigma_results)
     """
 
     def __init__(self, logger):
@@ -20,6 +15,63 @@ class Aggregator:
         if isinstance(node, dict) and node.get("ok") and "data" in node:
             return node["data"]
         return node
+
+    def _extract_mitre(self, mitre_node) -> List[str]:
+        out = []
+        if isinstance(mitre_node, dict):
+            data_list = mitre_node.get("data") or []
+            for t in data_list:
+                if not isinstance(t, dict):
+                    continue
+                attr = t.get("attributes", {})
+                tid = attr.get("technique_id")
+                tname = attr.get("technique")
+                tactic = attr.get("tactic")
+                if tid:
+                    label = tid
+                    if tname:
+                        label += f" {tname}"
+                    if tactic:
+                        label += f" (tactic: {tactic})"
+                    out.append(label)
+        return out
+
+    def _extract_yara_sigma(self, behaviours_node) -> (Any, Any):
+        """
+        Возвращает (yara_results, sigma_results).
+        Формат VT может быть:
+          behaviours_node.data.crowdsourced_yara_results
+          behaviours_node.data.attributes.crowdsourced_yara_results
+          (то же для sigma)
+        Берём сырые списки (ограничим по длине).
+        """
+        candidates = []
+        if isinstance(behaviours_node, dict):
+            candidates.append(behaviours_node.get("data"))
+            if isinstance(behaviours_node.get("data"), dict):
+                candidates.append(behaviours_node["data"].get("attributes"))
+            # fallback: сам behaviours_node (если структура иная)
+            candidates.append(behaviours_node)
+
+        yara_res = None
+        sigma_res = None
+
+        for c in candidates:
+            if not isinstance(c, dict):
+                continue
+            if yara_res is None and "crowdsourced_yara_results" in c:
+                # ограничим до 50 правил
+                raw = c.get("crowdsourced_yara_results")
+                if isinstance(raw, list):
+                    yara_res = raw[:50]
+            if sigma_res is None and "crowdsourced_sigma_results" in c:
+                raw = c.get("crowdsourced_sigma_results")
+                if isinstance(raw, list):
+                    sigma_res = raw[:50]
+            if yara_res and sigma_res:
+                break
+
+        return yara_res, sigma_res
 
     def build_struct(self, vt_data: Dict[str, Any]) -> Dict[str, Any]:
         file_report = self._unwrap(vt_data.get("file_report", {})) or {}
@@ -40,43 +92,23 @@ class Aggregator:
         type_description = attributes.get("type_description")
         names = attributes.get("names", [])[:10]
 
-        # --- MITRE via behaviour_mitre_trees ---
         mitre_node = self._unwrap(
             vt_data.get("behaviour_mitre_trees") or
-            vt_data.get("attack_techniques") or
-            {}
+            vt_data.get("attack_techniques") or {}
         )
+        mitre_list = self._extract_mitre(mitre_node)
 
-        mitre_list = []
-        if isinstance(mitre_node, dict):
-            # The VT endpoint typically returns { "data": [ { "attributes": {...} } ] }
-            data_list = mitre_node.get("data") or []
-            for t in data_list:
-                attr = t.get("attributes", {}) if isinstance(t, dict) else {}
-                tid = attr.get("technique_id")
-                tname = attr.get("technique")
-                tactic = attr.get("tactic")
-                # Build readable label
-                if tid:
-                    label = f"{tid}"
-                    if tname:
-                        label += f" {tname}"
-                    if tactic:
-                        label += f" (tactic: {tactic})"
-                    mitre_list.append(label)
-
-        # Comments
         comments_node = self._unwrap(vt_data.get("comments", {}))
         comments_raw = []
         if isinstance(comments_node, dict):
             comments_raw = comments_node.get("data", []) or []
         comments_list = []
         for c in comments_raw[:20]:
-            attr = c.get("attributes", {}) if isinstance(c, dict) else {}
-            text = attr.get("text", "")
-            comments_list.append(text[:300])
+            if isinstance(c, dict):
+                attr = c.get("attributes", {})
+                text = attr.get("text", "")
+                comments_list.append(text[:300])
 
-        # Behaviours (sandbox)
         behaviours_node = self._unwrap(
             vt_data.get("behaviour") or vt_data.get("behaviours") or {}
         )
@@ -91,6 +123,7 @@ class Aggregator:
                         pname = p.get("name") or p.get("command_line")
                         if pname:
                             processes.append(pname[:120])
+
                 nets = data_section.get("network") or {}
                 if isinstance(nets, dict):
                     hosts = nets.get("hosts") or []
@@ -100,16 +133,7 @@ class Aggregator:
                             if ip:
                                 network.append(ip)
 
-        # YARA / Sigma
-        yara_node = self._unwrap(
-            vt_data.get("yara_ruleset") or
-            vt_data.get("yara_rulesets") or
-            vt_data.get("crowdsourced_yara_rulesets")
-        )
-        sigma_node = self._unwrap(
-            vt_data.get("sigma_rules") or
-            vt_data.get("crowdsourced_sigma_rules")
-        )
+        yara_results, sigma_results = self._extract_yara_sigma(behaviours_node)
 
         return {
             "basic": {
@@ -126,6 +150,7 @@ class Aggregator:
             "comments": comments_list,
             "processes": processes,
             "network": network,
-            "yara_ruleset": yara_node if yara_node else None,
-            "sigma_rules": sigma_node if sigma_node else None
+            # Сохраняем старые ключи для Summarizer:
+            "yara_ruleset": yara_results,
+            "sigma_rules": sigma_results
         }
