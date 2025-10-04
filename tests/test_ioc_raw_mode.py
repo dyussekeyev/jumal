@@ -24,8 +24,10 @@ def test_raw_mode_success():
     logger = logging.getLogger("test")
     config = {
         "llm": {
-            "ioc_raw_mode": True,
             "ioc_model": "test-model"
+        },
+        "ui": {
+            "default_language": "en"
         }
     }
     extractor = IOCExtractor(logger, config)
@@ -91,38 +93,35 @@ def test_raw_mode_success():
 
 
 def test_raw_mode_default():
-    """Test that raw mode is default when not specified."""
+    """Test that raw mode is always enabled."""
     logger = logging.getLogger("test")
-    config = {"llm": {}}  # No ioc_raw_mode specified
+    config = {"llm": {}}  # No config specified
     extractor = IOCExtractor(logger, config)
     
-    assert extractor.raw_mode == True, "Raw mode should be default"
-    print("✓ test_raw_mode_default - Raw mode is default")
+    # raw_mode attribute no longer exists, just verify extractor initializes
+    assert extractor.raw_system_prompt is not None
+    assert extractor.raw_user_template is not None
+    print("✓ test_raw_mode_default - Raw mode is always enabled")
 
 
 def test_legacy_mode_returns_error():
-    """Test that legacy mode (ioc_raw_mode=false) returns an error."""
+    """Test that config is now simpler without legacy mode checks."""
     logger = logging.getLogger("test")
     config = {
         "llm": {
-            "ioc_raw_mode": False,
             "ioc_model": "test-model"
+        },
+        "ui": {
+            "default_language": "en"
         }
     }
     extractor = IOCExtractor(logger, config)
     
-    mock_client = MockLLMClient("should not be called")
-    aggregated = {"basic": {}, "processes": []}
+    # Should initialize successfully without legacy mode concerns
+    assert extractor.raw_system_prompt is not None
+    assert extractor.raw_user_template is not None
     
-    result = extractor.run(mock_client, aggregated)
-    
-    # Verify error
-    assert "error" in result, f"Expected error for legacy mode, got: {result}"
-    assert "legacy_mode_not_available" in result["error"]
-    assert result["attempts"] == 0
-    assert mock_client.call_count == 0, "LLM should not be called for legacy mode"
-    
-    print(f"✓ test_legacy_mode_returns_error - Error: {result['error'][:50]}...")
+    print("✓ test_legacy_mode_returns_error - No legacy mode support needed")
 
 
 def test_raw_mode_with_custom_prompts():
@@ -133,10 +132,12 @@ def test_raw_mode_with_custom_prompts():
     
     config = {
         "llm": {
-            "ioc_raw_mode": True,
             "ioc_raw_system_prompt": custom_system,
             "ioc_raw_user_template": custom_template,
             "ioc_model": "test-model"
+        },
+        "ui": {
+            "default_language": "en"
         }
     }
     extractor = IOCExtractor(logger, config)
@@ -161,7 +162,10 @@ def test_raw_mode_with_custom_prompts():
 def test_raw_mode_truncates_long_context():
     """Test that raw mode truncates very long context."""
     logger = logging.getLogger("test")
-    config = {"llm": {"ioc_raw_mode": True}}
+    config = {
+        "llm": {},
+        "ui": {"default_language": "en"}
+    }
     extractor = IOCExtractor(logger, config)
     
     # Create aggregated data with very long process list
@@ -188,7 +192,10 @@ def test_raw_mode_truncates_long_context():
 def test_raw_mode_llm_failure():
     """Test raw mode error handling when LLM call fails."""
     logger = logging.getLogger("test")
-    config = {"llm": {"ioc_raw_mode": True}}
+    config = {
+        "llm": {},
+        "ui": {"default_language": "en"}
+    }
     extractor = IOCExtractor(logger, config)
     
     class FailingMockClient:
@@ -213,7 +220,10 @@ def test_raw_mode_llm_failure():
 def test_section_headings_in_output():
     """Test that expected section headings appear in raw mode output."""
     logger = logging.getLogger("test")
-    config = {"llm": {"ioc_raw_mode": True}}
+    config = {
+        "llm": {},
+        "ui": {"default_language": "en"}
+    }
     extractor = IOCExtractor(logger, config)
     
     # Mock response with all expected sections

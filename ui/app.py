@@ -4,7 +4,7 @@ import threading
 import time
 import json
 import os
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from core.hashutil import detect_hash_type
 from clients.vt_client import VTClient, VTAuthError
 from clients.llm_client import (
@@ -46,7 +46,7 @@ class JUMALApp:
         self.vt_client = None
         self.llm_client = None
         self.aggregator = Aggregator(self.logger)
-        self.summarizer = Summarizer(self.logger)
+        self.summarizer = Summarizer(self.logger, self.config)
         self.ioc_extractor = IOCExtractor(self.logger, self.config)
         self._init_clients()
 
@@ -108,10 +108,10 @@ class JUMALApp:
         self.frame_raw = ttk.Frame(self.notebook)
         self.frame_config = ttk.Frame(self.notebook)
 
-        self.notebook.add(self.frame_summary, text="Summary")
-        self.notebook.add(self.frame_indicators, text="Indicators/Rules")
-        self.notebook.add(self.frame_raw, text="Raw")
-        self.notebook.add(self.frame_config, text="Config")
+        self.notebook.add(self.frame_summary, text=self._t("tab_summary"))
+        self.notebook.add(self.frame_indicators, text=self._t("tab_indicators"))
+        self.notebook.add(self.frame_raw, text=self._t("tab_raw"))
+        self.notebook.add(self.frame_config, text=self._t("tab_config"))
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
         # Summary top controls
@@ -120,11 +120,17 @@ class JUMALApp:
         ttk.Label(top_frame, text=self._t("label_hash")).pack(side=tk.LEFT)
         self.entry_hash = ttk.Entry(top_frame, width=60)
         self.entry_hash.pack(side=tk.LEFT, padx=5)
+        
+        # Hash actions: Clear, Copy, Paste
+        ttk.Button(top_frame, text=self._t("btn_clear"), command=self._on_clear_hash, width=6).pack(side=tk.LEFT, padx=2)
+        ttk.Button(top_frame, text=self._t("btn_copy"), command=self._on_copy_hash, width=6).pack(side=tk.LEFT, padx=2)
+        ttk.Button(top_frame, text=self._t("btn_paste"), command=self._on_paste_hash, width=6).pack(side=tk.LEFT, padx=2)
+        
         ttk.Button(top_frame, text=self._t("btn_get_report"), command=self._on_get_report).pack(side=tk.LEFT, padx=5)
         ttk.Button(top_frame, text=self._t("btn_copy_summary"), command=self._on_copy_summary).pack(side=tk.LEFT)
         ttk.Button(top_frame, text=self._t("btn_save_report"), command=self._on_save_report).pack(side=tk.LEFT, padx=5)
 
-        self.text_summary = scrolledtext.ScrolledText(self.frame_summary, wrap=tk.WORD)
+        self.text_summary = scrolledtext.ScrolledText(self.frame_summary, wrap=tk.WORD, state=tk.DISABLED)
         self.text_summary.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         # Indicators / Rules tab
@@ -132,11 +138,15 @@ class JUMALApp:
         indicators_top_frame.pack(fill=tk.X, pady=5, padx=5)
         ttk.Button(indicators_top_frame, text=self._t("btn_copy_summary"), command=self._on_copy_indicators).pack(side=tk.LEFT)
         
-        self.text_indicators = scrolledtext.ScrolledText(self.frame_indicators, wrap=tk.WORD)
+        self.text_indicators = scrolledtext.ScrolledText(self.frame_indicators, wrap=tk.WORD, state=tk.DISABLED)
         self.text_indicators.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         # Raw tab
-        self.text_raw = scrolledtext.ScrolledText(self.frame_raw, wrap=tk.WORD)
+        raw_top_frame = ttk.Frame(self.frame_raw)
+        raw_top_frame.pack(fill=tk.X, pady=5, padx=5)
+        ttk.Button(raw_top_frame, text=self._t("btn_copy_all"), command=self._on_copy_raw).pack(side=tk.LEFT)
+        
+        self.text_raw = scrolledtext.ScrolledText(self.frame_raw, wrap=tk.WORD, state=tk.DISABLED)
         self.text_raw.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         # Config tab
@@ -145,8 +155,11 @@ class JUMALApp:
         self.var_vt_key = tk.StringVar(value=self.config.get("virustotal", {}).get("api_key", ""))
         self.var_llm_key = tk.StringVar(value=self.config.get("llm", {}).get("api_key", ""))
         self.var_llm_model = tk.StringVar(value=self.config.get("llm", {}).get("model", "gpt-4o-mini"))
+        self.var_ioc_model = tk.StringVar(value=self.config.get("llm", {}).get("ioc_model", ""))
         self.var_user_agent = tk.StringVar(value=self.config.get("network", {}).get("user_agent", "JUMAL/0.1"))
         self.var_system_prompt = tk.StringVar(value=self.config.get("llm", {}).get("system_prompt", ""))
+        self.var_ioc_system_prompt = tk.StringVar(value=self.config.get("llm", {}).get("ioc_raw_system_prompt", ""))
+        self.var_ioc_user_template = tk.StringVar(value=self.config.get("llm", {}).get("ioc_raw_user_template", ""))
         self.var_lang = tk.StringVar(value=self.current_lang)
 
         row = 0
@@ -154,25 +167,46 @@ class JUMALApp:
             (self._t("cfg_vt_api_key"), self.var_vt_key),
             (self._t("cfg_llm_api_key"), self.var_llm_key),
             (self._t("cfg_llm_model"), self.var_llm_model),
+            (self._t("cfg_ioc_model"), self.var_ioc_model),
             (self._t("cfg_user_agent"), self.var_user_agent),
         ]:
-            ttk.Label(cfg_frame, text=label).grid(row=row, column=0, sticky="w")
+            ttk.Label(cfg_frame, text=label).grid(row=row, column=0, sticky="w", pady=2)
             ttk.Entry(cfg_frame, textvariable=var, width=60).grid(row=row, column=1, sticky="w", pady=2)
             row += 1
 
-        ttk.Label(cfg_frame, text=self._t("cfg_system_prompt")).grid(row=row, column=0, sticky="nw")
-        tk.Text(cfg_frame, height=5, width=60, name="system_prompt_box").grid(row=row, column=1, sticky="w", pady=2)
-        self.system_prompt_box = cfg_frame.children["system_prompt_box"]
+        # System prompt
+        ttk.Label(cfg_frame, text=self._t("cfg_system_prompt")).grid(row=row, column=0, sticky="nw", pady=2)
+        self.system_prompt_box = tk.Text(cfg_frame, height=5, width=60)
+        self.system_prompt_box.grid(row=row, column=1, sticky="w", pady=2)
         self.system_prompt_box.insert("1.0", self.var_system_prompt.get())
         row += 1
 
-        ttk.Label(cfg_frame, text=self._t("cfg_language")).grid(row=row, column=0, sticky="w")
-        lang_cb = ttk.Combobox(cfg_frame, textvariable=self.var_lang, values=list(self.lang_data.keys()), width=10)
-        lang_cb.grid(row=row, column=1, sticky="w")
+        # IOC System prompt
+        ttk.Label(cfg_frame, text=self._t("cfg_ioc_system_prompt")).grid(row=row, column=0, sticky="nw", pady=2)
+        self.ioc_system_prompt_box = tk.Text(cfg_frame, height=5, width=60)
+        self.ioc_system_prompt_box.grid(row=row, column=1, sticky="w", pady=2)
+        self.ioc_system_prompt_box.insert("1.0", self.var_ioc_system_prompt.get())
         row += 1
 
-        ttk.Button(cfg_frame, text=self._t("btn_apply"), command=self._on_apply_config).grid(row=row, column=0, pady=10)
-        ttk.Label(cfg_frame, text=self._t("disclaimer")).grid(row=row, column=1, sticky="w")
+        # IOC User template
+        ttk.Label(cfg_frame, text=self._t("cfg_ioc_user_template")).grid(row=row, column=0, sticky="nw", pady=2)
+        self.ioc_user_template_box = tk.Text(cfg_frame, height=8, width=60)
+        self.ioc_user_template_box.grid(row=row, column=1, sticky="w", pady=2)
+        self.ioc_user_template_box.insert("1.0", self.var_ioc_user_template.get())
+        row += 1
+
+        # Language selector
+        ttk.Label(cfg_frame, text=self._t("cfg_language")).grid(row=row, column=0, sticky="w", pady=2)
+        lang_cb = ttk.Combobox(cfg_frame, textvariable=self.var_lang, values=list(self.lang_data.keys()), width=10)
+        lang_cb.grid(row=row, column=1, sticky="w", pady=2)
+        row += 1
+
+        # Apply and Reset buttons
+        btn_frame = ttk.Frame(cfg_frame)
+        btn_frame.grid(row=row, column=0, columnspan=2, pady=10, sticky="w")
+        ttk.Button(btn_frame, text=self._t("btn_apply"), command=self._on_apply_config).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text=self._t("btn_reset"), command=self._on_reset_config).pack(side=tk.LEFT, padx=5)
+        ttk.Label(btn_frame, text=self._t("disclaimer")).pack(side=tk.LEFT, padx=10)
         row += 1
 
         # Status bar
@@ -185,10 +219,44 @@ class JUMALApp:
 
     # ------------- Helpers -------------
     def _status_message(self, msg: str):
+        """Display a status message in the status bar."""
         self.status_label.config(text=msg)
         self.root.update_idletasks()
 
+    def _copy_to_clipboard(self, text: str) -> bool:
+        """
+        Copy text to clipboard with fallback.
+        
+        Args:
+            text: Text to copy
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(text)
+            self.root.update()  # Ensure clipboard is updated
+            return True
+        except Exception as e:
+            self.logger.warning(f"Clipboard operation failed: {e}")
+            return False
+
+    def _paste_from_clipboard(self) -> Optional[str]:
+        """
+        Paste text from clipboard with fallback.
+        
+        Returns:
+            Clipboard text or None if failed
+        """
+        try:
+            return self.root.clipboard_get()
+        except Exception as e:
+            self.logger.warning(f"Clipboard paste failed: {e}")
+            return None
+
     def _run_long_task(self, task):
+        """Run a task in a background thread."""
         t = threading.Thread(target=task, daemon=True)
         t.start()
 
@@ -199,9 +267,19 @@ class JUMALApp:
         if not ht:
             messagebox.showerror("Error", self._t("err_invalid_hash"))
             return
+        # Clear readonly textareas
+        self.text_summary.config(state=tk.NORMAL)
         self.text_summary.delete("1.0", tk.END)
+        self.text_summary.config(state=tk.DISABLED)
+        
+        self.text_raw.config(state=tk.NORMAL)
         self.text_raw.delete("1.0", tk.END)
+        self.text_raw.config(state=tk.DISABLED)
+        
+        self.text_indicators.config(state=tk.NORMAL)
         self.text_indicators.delete("1.0", tk.END)
+        self.text_indicators.config(state=tk.DISABLED)
+        
         self._status_message(self._t("status_working"))
         self.progress.start(10)
         self._run_long_task(lambda: self._process_hash(h, ht))
@@ -249,12 +327,14 @@ class JUMALApp:
             # LLM streaming
             content_parts = []
             try:
+                self.text_summary.config(state=tk.NORMAL)  # Enable for streaming
                 for chunk in self.llm_client.stream_chat(prompt):
                     content_parts.append(chunk)
                     self.text_summary.insert(tk.END, chunk)
                     self.text_summary.see(tk.END)
                     # slight pause for UI responsiveness
                     time.sleep(0.005)
+                self.text_summary.config(state=tk.DISABLED)  # Disable after streaming
             except LLMAuthError as e:
                 self.logger.error("LLM auth error")
                 self._append_summary(f"\n[!] LLM auth error: {e}\n")
@@ -315,13 +395,10 @@ class JUMALApp:
             lines.append(f"  {ioc_result['error']}")
             lines.append("")
             
-            # If it's legacy mode error, provide helpful message
-            if "legacy_mode_not_available" in ioc_result.get("error", ""):
-                lines.append("Legacy structured IOC extraction has been replaced with raw mode.")
-                lines.append("Please update your config to use ioc_raw_mode=true (or omit it).")
-            
+            self.text_indicators.config(state=tk.NORMAL)
             self.text_indicators.delete("1.0", tk.END)
             self.text_indicators.insert(tk.END, "\n".join(lines))
+            self.text_indicators.config(state=tk.DISABLED)
             return
         
         # Raw mode - display markdown text
@@ -335,9 +412,11 @@ class JUMALApp:
             lines.append("-" * 60)
             lines.append("")
             
+            self.text_indicators.config(state=tk.NORMAL)
             self.text_indicators.delete("1.0", tk.END)
             self.text_indicators.insert(tk.END, "\n".join(lines))
             self.text_indicators.insert(tk.END, raw_text)
+            self.text_indicators.config(state=tk.DISABLED)
             
             self.logger.info(f"IOC extraction displayed successfully ({len(raw_text)} chars)")
             return
@@ -345,8 +424,10 @@ class JUMALApp:
         # Fallback for unexpected format
         lines.append("⚠ Unexpected IOC result format")
         lines.append(f"Result keys: {list(ioc_result.keys())}")
+        self.text_indicators.config(state=tk.NORMAL)
         self.text_indicators.delete("1.0", tk.END)
         self.text_indicators.insert(tk.END, "\n".join(lines))
+        self.text_indicators.config(state=tk.DISABLED)
     
     def _extract_iocs(self, aggregated: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -377,24 +458,65 @@ class JUMALApp:
             }
 
     def _append_summary(self, text: str):
+        """Append text to summary textarea (handles readonly state)."""
+        self.text_summary.config(state=tk.NORMAL)
         self.text_summary.insert(tk.END, text)
         self.text_summary.see(tk.END)
+        self.text_summary.config(state=tk.DISABLED)
 
     def _append_raw(self, text: str):
+        """Append text to raw textarea (handles readonly state)."""
+        self.text_raw.config(state=tk.NORMAL)
         self.text_raw.insert(tk.END, text)
         self.text_raw.see(tk.END)
+        self.text_raw.config(state=tk.DISABLED)
+
+    def _on_clear_hash(self):
+        """Clear the hash input field."""
+        self.entry_hash.delete(0, tk.END)
+        self._status_message(self._t("msg_cleared"))
+
+    def _on_copy_hash(self):
+        """Copy hash from input field to clipboard."""
+        text = self.entry_hash.get()
+        if self._copy_to_clipboard(text):
+            self._status_message(self._t("msg_copied"))
+        else:
+            messagebox.showerror(self._t("status_error"), self._t("err_clipboard"))
+
+    def _on_paste_hash(self):
+        """Paste hash from clipboard to input field."""
+        text = self._paste_from_clipboard()
+        if text:
+            self.entry_hash.delete(0, tk.END)
+            self.entry_hash.insert(0, text.strip())
+            self._status_message(self._t("msg_pasted"))
+        else:
+            messagebox.showerror(self._t("status_error"), self._t("err_clipboard"))
 
     def _on_copy_summary(self):
+        """Copy summary text to clipboard."""
         txt = self.text_summary.get("1.0", tk.END)
-        self.root.clipboard_clear()
-        self.root.clipboard_append(txt)
-        messagebox.showinfo("Copied", self._t("msg_copied"))
+        if self._copy_to_clipboard(txt):
+            messagebox.showinfo(self._t("btn_copy"), self._t("msg_copied"))
+        else:
+            messagebox.showerror(self._t("status_error"), self._t("err_clipboard"))
     
     def _on_copy_indicators(self):
+        """Copy indicators text to clipboard."""
         txt = self.text_indicators.get("1.0", tk.END)
-        self.root.clipboard_clear()
-        self.root.clipboard_append(txt)
-        messagebox.showinfo("Copied", self._t("msg_copied"))
+        if self._copy_to_clipboard(txt):
+            messagebox.showinfo(self._t("btn_copy"), self._t("msg_copied"))
+        else:
+            messagebox.showerror(self._t("status_error"), self._t("err_clipboard"))
+
+    def _on_copy_raw(self):
+        """Copy raw text to clipboard."""
+        txt = self.text_raw.get("1.0", tk.END)
+        if self._copy_to_clipboard(txt):
+            messagebox.showinfo(self._t("btn_copy"), self._t("msg_copied"))
+        else:
+            messagebox.showerror(self._t("status_error"), self._t("err_clipboard"))
 
     def _on_save_report(self):
         content_summary = self.text_summary.get("1.0", tk.END).strip()
@@ -457,6 +579,17 @@ class JUMALApp:
         messagebox.showinfo("Saved", f"Saved:\n{json_path}\n{txt_path}")
 
     def _on_apply_config(self):
+        """Apply configuration changes from UI."""
+        # Validate required fields
+        if not self.var_vt_key.get().strip():
+            messagebox.showerror(self._t("status_error"), 
+                                f"{self._t('cfg_vt_api_key')}: {self._t('err_validation_required')}")
+            return
+        if not self.var_llm_key.get().strip():
+            messagebox.showerror(self._t("status_error"),
+                                f"{self._t('cfg_llm_api_key')}: {self._t('err_validation_required')}")
+            return
+        
         new_cfg = {
             "virustotal": {
                 "api_key": self.var_vt_key.get()
@@ -464,7 +597,10 @@ class JUMALApp:
             "llm": {
                 "api_key": self.var_llm_key.get(),
                 "model": self.var_llm_model.get(),
-                "system_prompt": self.system_prompt_box.get('1.0', tk.END).strip()
+                "ioc_model": self.var_ioc_model.get() if self.var_ioc_model.get().strip() else None,
+                "system_prompt": self.system_prompt_box.get('1.0', tk.END).strip(),
+                "ioc_raw_system_prompt": self.ioc_system_prompt_box.get('1.0', tk.END).strip(),
+                "ioc_raw_user_template": self.ioc_user_template_box.get('1.0', tk.END).strip()
             },
             "network": {
                 "user_agent": self.var_user_agent.get()
@@ -476,8 +612,36 @@ class JUMALApp:
         self.cfg_manager.update_from_dict(new_cfg)
         self.config = self.cfg_manager.get()
         self.current_lang = self.config.get("ui", {}).get("default_language", "en")
+        
+        # Reinitialize components with new config
+        self.summarizer = Summarizer(self.logger, self.config)
+        self.ioc_extractor = IOCExtractor(self.logger, self.config)
+        
         self._status_message(self._t("status_applied"))
         self._init_clients()
+        messagebox.showinfo(self._t("btn_apply"), self._t("msg_saved"))
+
+    def _on_reset_config(self):
+        """Reset configuration fields to currently saved values."""
+        self.var_vt_key.set(self.config.get("virustotal", {}).get("api_key", ""))
+        self.var_llm_key.set(self.config.get("llm", {}).get("api_key", ""))
+        self.var_llm_model.set(self.config.get("llm", {}).get("model", "gpt-4o-mini"))
+        self.var_ioc_model.set(self.config.get("llm", {}).get("ioc_model", ""))
+        self.var_user_agent.set(self.config.get("network", {}).get("user_agent", "JUMAL/0.1"))
+        self.var_lang.set(self.current_lang)
+        
+        # Reset text boxes
+        self.system_prompt_box.delete("1.0", tk.END)
+        self.system_prompt_box.insert("1.0", self.config.get("llm", {}).get("system_prompt", ""))
+        
+        self.ioc_system_prompt_box.delete("1.0", tk.END)
+        self.ioc_system_prompt_box.insert("1.0", self.config.get("llm", {}).get("ioc_raw_system_prompt", ""))
+        
+        self.ioc_user_template_box.delete("1.0", tk.END)
+        self.ioc_user_template_box.insert("1.0", self.config.get("llm", {}).get("ioc_raw_user_template", ""))
+        
+        self._status_message(self._t("status_reset"))
+        messagebox.showinfo(self._t("btn_reset"), self._t("status_reset"))
 
     def run(self):
         self.root.mainloop()

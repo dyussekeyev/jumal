@@ -27,18 +27,21 @@ It queries VirusTotal for static, behavioral, MITRE ATT&CK, comments, and crowds
   - `mitre_techniques`: list of technique IDs
   - `recommended_actions`: list
   - `raw_summary`: short technical paragraph
-- Extracted IOC output (second LLM - raw mode):
+- Extracted IOC output (second LLM):
   - Markdown-formatted sections with indicators organized by type
   - Sections: Processes, Network IPs, Network Domains, URLs, File Paths, Registry Keys, Mutexes, YARA Rules, Sigma Rules, Other IOCs
   - Human-readable format for easy copying and analysis
+  - Adapts to UI language (English, Russian, Kazakh)
 - GUI (tkinter) with tabs:
-  - Summary (verdict & analysis)
-  - Indicators / Rules (AI-extracted structured IOCs, YARA, Sigma)
-  - Raw (all JSON responses)
-  - Config (edit runtime settings)
-- Multilingual UI (EN / RU / KZ) via JSON resource files.
-- Report saving: JSON bundle + plain text.
-- Logging to file.
+  - Summary (verdict & analysis) - readonly with copy button
+  - Indicators / Rules (AI-extracted IOCs, YARA, Sigma) - readonly with copy button
+  - Raw (all JSON responses) - readonly with copy all button
+  - Config (edit runtime settings including IOC prompts)
+- Hash input enhancements: Clear, Copy, Paste buttons with clipboard integration
+- Multilingual UI (EN / RU / KZ) via JSON resource files
+- LLM responses adapt to active UI locale
+- Report saving: JSON bundle + plain text
+- Logging to file
 
 ---
 
@@ -120,20 +123,19 @@ JUMAL uses a **dual LLM approach** for comprehensive malware analysis:
   2. Free-form analysis text.
 - The app attempts to extract the first JSON object; if invalid, displays parsing failure message.
 
-### Second LLM Pass: IOC Extraction (Raw Mode)
+### Second LLM Pass: IOC Extraction
 
-**New in v0.2+**: IOC extraction now uses **raw mode** by default, which delegates all formatting to the LLM without local JSON parsing.
+IOC extraction uses **raw markdown mode**, which delegates all formatting to the LLM without local JSON parsing.
 
 - **Raw markdown output**: LLM produces human-readable sections (Processes, Network IPs, Domains, URLs, File Paths, Registry Keys, Mutexes, YARA Rules, Sigma Rules, Other IOCs).
 - **No parsing/validation**: Output is displayed verbatim in the Indicators/Rules tab with a copy button.
 - **Single-pass extraction**: No retry logic, simpler error handling.
 - **Configurable prompts**: Customize via `llm.ioc_raw_system_prompt` and `llm.ioc_raw_user_template` in config.
 - **Model configuration**: Optional separate model via `llm.ioc_model` (fallback to main model if not set).
+- **Multilingual support**: IOC extraction adapts to the active UI locale, providing explanations in the user's language while preserving technical indicators.
 
-**Deprecated**: The legacy structured JSON-based IOC extraction (with `BEGIN_IOC_JSON` markers, retry logic, and normalization) has been removed. If you set `ioc_raw_mode=false`, the system will return an error.
-
-**Why this change?**
-- Eliminates `parse_failed_after_retry` errors when LLM doesn't follow strict JSON schema.
+**Benefits**:
+- Eliminates parsing errors when LLM doesn't follow strict JSON schema.
 - Provides better UX with readable markdown output.
 - Simplifies codebase by removing complex parsing/retry/normalization logic.
 - Gives LLM full control over formatting, making it more flexible and reliable.
@@ -159,7 +161,6 @@ Example:
     "system_prompt": "You are a malware analysis assistant...",
     "stream_enabled": true,
     "ioc_model": null,
-    "ioc_raw_mode": true,
     "ioc_raw_system_prompt": "You are a DFIR assistant specializing in malware analysis...",
     "ioc_raw_user_template": "Based on the following malware behavior data, extract and organize all Indicators of Compromise...\n\n{CONTEXT}\n\n..."
   },
@@ -185,15 +186,9 @@ Edit key fields inside the UI Config tab or manually in file.
 **Configuration Notes**:
 - `llm.ioc_model`: Optional. If set to `null` or omitted, the main `llm.model` is used for IOC extraction. You can specify a different model (e.g., a faster/cheaper model) for the non-streaming IOC extraction pass.
 - `llm.stream_enabled`: Applies only to the first LLM pass (main analysis). IOC extraction is always non-streaming.
-- `llm.ioc_raw_mode`: (Default: `true`) Enables raw markdown mode for IOC extraction. Set to `false` to use legacy structured mode (deprecated and will return an error).
-- `llm.ioc_raw_system_prompt`: System prompt for raw mode IOC extraction. Customize to adjust behavior.
-- `llm.ioc_raw_user_template`: Template for raw mode IOC extraction prompt. Use `{CONTEXT}` placeholder for aggregated data.
-
-**Deprecated Configuration Keys** (ignored in raw mode):
-- `llm.ioc_system_prompt`: Legacy system prompt for structured JSON extraction.
-- `llm.ioc_prompt_template`: Legacy template with `BEGIN_IOC_JSON` markers.
-- `llm.ioc_retry_enabled`: Retry logic is not used in raw mode.
-- `llm.use_json_mode`: JSON mode flag is not used in raw mode.
+- `llm.ioc_raw_system_prompt`: System prompt for IOC extraction. Customize to adjust behavior.
+- `llm.ioc_raw_user_template`: Template for IOC extraction prompt. Use `{CONTEXT}` placeholder for aggregated data.
+- `ui.default_language`: Set UI language (en/ru/kz). The LLM will adapt its responses to match the selected language.
 
 ---
 
