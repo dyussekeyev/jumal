@@ -11,9 +11,9 @@ DEFAULT_CONFIG = {
         "retry_backoff_base": 5
     },
     "llm": {
-        "provider_url": "https://api.openai.com/v1",
+        "provider_url": "https://openrouter.ai/api/v1",
         "api_key": "PUT_YOUR_LLM_API_KEY_HERE",
-        "model": "gpt-4o-mini",
+        "model": "meta-llama/llama-3.2-1b-instruct",
         "system_prompt": "You are a malware analysis assistant. Provide concise, structured malware assessments.",
         "stream_enabled": True
     },

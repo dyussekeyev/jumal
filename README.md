@@ -113,7 +113,7 @@ JUMAL uses a **dual LLM approach** for comprehensive malware analysis:
 
 ### First LLM Pass: Main Analysis (Streaming)
 
-- OpenAI-compatible endpoint (defaults to `https://api.openai.com/v1`).
+- OpenAI-compatible endpoint (defaults to `https://openrouter.ai/api/v1`).
 - Streaming enabled for real-time feedback (`stream=true`).
 - Prompt structure:
   - System prompt from config.
@@ -155,9 +155,9 @@ Example:
     "retry_backoff_base": 5
   },
   "llm": {
-    "provider_url": "https://api.openai.com/v1",
+    "provider_url": "https://openrouter.ai/api/v1",
     "api_key": "YOUR_LLM_KEY",
-    "model": "gpt-4o-mini",
+    "model": "meta-llama/llama-3.2-1b-instruct",
     "system_prompt": "You are a malware analysis assistant...",
     "stream_enabled": true,
     "ioc_model": null,
@@ -184,6 +184,7 @@ Example:
 Edit key fields inside the UI Config tab or manually in file.
 
 **Configuration Notes**:
+- **GUI Editable Fields**: The following fields can now be edited directly in the GUI Config tab: `virustotal.base_url`, `llm.provider_url`, and `llm.model`. Changes are saved to `config.json` and take effect immediately after clicking Apply.
 - `llm.ioc_model`: Optional. If set to `null` or omitted, the main `llm.model` is used for IOC extraction. You can specify a different model (e.g., a faster/cheaper model) for the non-streaming IOC extraction pass.
 - `llm.stream_enabled`: Applies only to the first LLM pass (main analysis). IOC extraction is always non-streaming.
 - `llm.ioc_raw_system_prompt`: System prompt for IOC extraction. Customize to adjust behavior.
@@ -233,7 +234,7 @@ python main.py
   },
   "meta": {
     "generator": "JUMAL 0.1",
-    "llm_model": "gpt-4o-mini",
+    "llm_model": "meta-llama/llama-3.2-1b-instruct",
     "ioc_model": null,
     "vt_base_url": "https://www.virustotal.com/api/v3"
   }
