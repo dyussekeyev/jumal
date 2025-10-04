@@ -128,6 +128,10 @@ class JUMALApp:
         self.text_summary.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         # Indicators / Rules tab
+        indicators_top_frame = ttk.Frame(self.frame_indicators)
+        indicators_top_frame.pack(fill=tk.X, pady=5, padx=5)
+        ttk.Button(indicators_top_frame, text=self._t("btn_copy_summary"), command=self._on_copy_indicators).pack(side=tk.LEFT)
+        
         self.text_indicators = scrolledtext.ScrolledText(self.frame_indicators, wrap=tk.WORD)
         self.text_indicators.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
@@ -292,12 +296,12 @@ class JUMALApp:
         finally:
             self.progress.stop()
 
-    def _build_indicators_tab(self, ioc_summary: Dict[str, Any]):
+    def _build_indicators_tab(self, ioc_result: Dict[str, Any]):
         """
-        Build Indicators/Rules tab with structured IOC data from LLM extraction.
+        Build Indicators/Rules tab with IOC data from LLM extraction.
         
         Args:
-            ioc_summary: IOC summary dict or error dict
+            ioc_result: IOC result dict (contains raw_text or error)
         """
         lines = []
         lines.append("=" * 60)
@@ -306,49 +310,42 @@ class JUMALApp:
         lines.append("")
         
         # Check if there was an error
-        if "error" in ioc_summary:
+        if "error" in ioc_result:
             lines.append("⚠ IOC extraction failed:")
-            lines.append(f"  {ioc_summary['error']}")
+            lines.append(f"  {ioc_result['error']}")
             lines.append("")
-            lines.append("Fallback: Showing raw aggregated data")
-            lines.append("")
-            # Show basic fallback
-            if "fallback_data" in ioc_summary:
-                fallback = ioc_summary["fallback_data"]
-                lines.append("Processes:")
-                for p in fallback.get("processes", [])[:20]:
-                    lines.append(f"  - {p}")
-                lines.append("")
-                lines.append("Network:")
-                for n in fallback.get("network", [])[:20]:
-                    lines.append(f"  - {n}")
+            
+            # If it's legacy mode error, provide helpful message
+            if "legacy_mode_not_available" in ioc_result.get("error", ""):
+                lines.append("Legacy structured IOC extraction has been replaced with raw mode.")
+                lines.append("Please update your config to use ioc_raw_mode=true (or omit it).")
+            
+            self.text_indicators.delete("1.0", tk.END)
             self.text_indicators.insert(tk.END, "\n".join(lines))
             return
         
-        # Structured sections
-        sections = [
-            ("PROCESS NAMES", "process_names"),
-            ("NETWORK - IP ADDRESSES", "network_ips"),
-            ("NETWORK - DOMAINS", "network_domains"),
-            ("URLs", "urls"),
-            ("FILE PATHS", "file_paths"),
-            ("REGISTRY KEYS", "registry_keys"),
-            ("MUTEXES", "mutexes"),
-            ("YARA RULES", "yara_rules"),
-            ("SIGMA RULES", "sigma_rules"),
-            ("OTHER IOCs", "other_iocs"),
-        ]
-        
-        for section_title, key in sections:
-            lines.append(f"{section_title}:")
-            items = ioc_summary.get(key, [])
-            if not items:
-                lines.append("  (none)")
-            else:
-                for item in items[:100]:  # Max 100 per section
-                    lines.append(f"  - {item}")
+        # Raw mode - display markdown text
+        if "raw_text" in ioc_result:
+            raw_text = ioc_result.get("raw_text", "")
+            attempts = ioc_result.get("attempts", 1)
+            model = ioc_result.get("model", "unknown")
+            
+            lines.append(f"Model: {model} | Attempts: {attempts}")
             lines.append("")
+            lines.append("-" * 60)
+            lines.append("")
+            
+            self.text_indicators.delete("1.0", tk.END)
+            self.text_indicators.insert(tk.END, "\n".join(lines))
+            self.text_indicators.insert(tk.END, raw_text)
+            
+            self.logger.info(f"IOC extraction displayed successfully ({len(raw_text)} chars)")
+            return
         
+        # Fallback for unexpected format
+        lines.append("⚠ Unexpected IOC result format")
+        lines.append(f"Result keys: {list(ioc_result.keys())}")
+        self.text_indicators.delete("1.0", tk.END)
         self.text_indicators.insert(tk.END, "\n".join(lines))
     
     def _extract_iocs(self, aggregated: Dict[str, Any]) -> Dict[str, Any]:
@@ -359,36 +356,24 @@ class JUMALApp:
             aggregated: Aggregated VT data
             
         Returns:
-            IOC summary dict (for UI) or error dict with fallback
+            IOC result dict for UI display (contains raw_text or error)
         """
         try:
-            # Use the new run() method which handles retry logic
-            self.logger.info("Starting IOC extraction with orchestrated run")
+            # Use the new run() method
+            self.logger.info("Starting IOC extraction")
             result = self.ioc_extractor.run(self.llm_client, aggregated)
             
             # Store full result for report saving
             self._last_ioc_result = result
             
-            # Check if extraction was successful
-            if "iocs" in result:
-                self.logger.info(f"IOC extraction successful after {result.get('attempts', 1)} attempt(s)")
-                # Return the IOCs directly for the UI
-                return result["iocs"]
-            else:
-                # Extraction failed
-                error_msg = result.get("error", "Unknown error")
-                self.logger.warning(f"IOC extraction failed: {error_msg}")
-                return {
-                    "error": error_msg,
-                    "fallback_data": aggregated,
-                    "raw_response": result.get("raw_response", "")
-                }
+            # Return result as-is (contains raw_text or error)
+            return result
         
         except Exception as e:
             self.logger.exception("Unexpected error during IOC extraction")
             return {
                 "error": f"Unexpected error: {str(e)}",
-                "fallback_data": aggregated
+                "attempts": 0
             }
 
     def _append_summary(self, text: str):
@@ -401,6 +386,12 @@ class JUMALApp:
 
     def _on_copy_summary(self):
         txt = self.text_summary.get("1.0", tk.END)
+        self.root.clipboard_clear()
+        self.root.clipboard_append(txt)
+        messagebox.showinfo("Copied", self._t("msg_copied"))
+    
+    def _on_copy_indicators(self):
+        txt = self.text_indicators.get("1.0", tk.END)
         self.root.clipboard_clear()
         self.root.clipboard_append(txt)
         messagebox.showinfo("Copied", self._t("msg_copied"))
