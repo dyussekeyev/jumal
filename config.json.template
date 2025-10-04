@@ -1,0 +1,30 @@
+{
+  "virustotal": {
+    "api_key": "PUT_YOUR_VT_API_KEY_HERE",
+    "base_url": "https://www.virustotal.com/api/v3",
+    "min_interval_seconds": 15,
+    "max_retries": 3,
+    "retry_backoff_base": 5
+  },
+  "llm": {
+    "provider_url": "https://api.openai.com/v1",
+    "api_key": "PUT_YOUR_LLM_API_KEY_HERE",
+    "model": "gpt-4o-mini",
+    "system_prompt": "You are a malware analysis assistant. Provide concise, structured malware assessments.",
+    "stream_enabled": true
+  },
+  "ui": {
+    "default_language": "en"
+  },
+  "network": {
+    "request_timeout_seconds": 30,
+    "user_agent": "JUMAL/0.1"
+  },
+  "output": {
+    "directory": "reports"
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "logs/app.log"
+  }
+}
