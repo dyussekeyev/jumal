@@ -1,36 +1,12 @@
-import json
-import re
-from typing import Dict, Any, Optional, Tuple, List
-
-# Legacy constants kept for backward compatibility (no longer used in raw mode)
-BEGIN_IOC_JSON = "BEGIN_IOC_JSON"
-END_IOC_JSON = "END_IOC_JSON"
-
-IOC_SCHEMA = """{
-  "process_names": [],        // Unique process/executable names
-  "network_ips": [],          // IP addresses only
-  "network_domains": [],      // Domain names (exclude IPs)
-  "urls": [],                 // Full URLs with protocol
-  "file_paths": [],           // File system paths
-  "registry_keys": [],        // Registry keys/paths
-  "mutexes": [],              // Mutex names
-  "yara_rules": [],           // YARA rule names
-  "sigma_rules": [],          // Sigma rule names/titles
-  "other_iocs": []            // Any other indicators
-}"""
-
-# Not used in raw mode
-JSON_BLOCK_RE = re.compile(r"\{.*?\}", re.DOTALL)
+from typing import Dict, Any, Optional
 
 
 class IOCExtractor:
     """
     Extracts Indicators of Compromise (IOCs) from aggregated VT behavior data.
     
-    Supports two modes:
-    1. Raw mode (default): LLM outputs human-readable markdown sections.
-       No JSON parsing, retry logic, or normalization.
-    2. Legacy structured mode (deprecated): Returns error if attempted.
+    Uses raw mode: LLM outputs human-readable markdown sections.
+    No JSON parsing, retry logic, or normalization required.
     
     Raw mode produces markdown with sections like:
     - Processes
@@ -71,32 +47,22 @@ Required sections:
 Keep the format clean and easy to copy. List each unique indicator once."""
 
     def __init__(self, logger, config: Optional[Dict[str, Any]] = None):
+        """
+        Initialize IOC extractor with configuration.
+        
+        Args:
+            logger: Logger instance
+            config: Configuration dictionary
+        """
         self.logger = logger
         self.config = config or {}
         
         # Load config or use defaults
         llm_cfg = self.config.get("llm", {})
         
-        # Check mode
-        self.raw_mode = llm_cfg.get("ioc_raw_mode", True)
-        
-        if self.raw_mode:
-            # Raw mode configuration
-            self.raw_system_prompt = llm_cfg.get("ioc_raw_system_prompt", self.DEFAULT_RAW_SYSTEM_PROMPT)
-            self.raw_user_template = llm_cfg.get("ioc_raw_user_template", self.DEFAULT_RAW_USER_TEMPLATE)
-        else:
-            # Legacy structured mode - deprecated
-            self.logger.warning("Legacy structured IOC mode (ioc_raw_mode=false) is deprecated and no longer supported")
-        
-        # Legacy config keys (kept for backward compatibility but not used in raw mode)
-        self.system_prompt = llm_cfg.get("ioc_system_prompt", 
-            "You are a DFIR assistant. Extract only factual Indicators of Compromise.")
-        self.prompt_template = llm_cfg.get("ioc_prompt_template",
-            "### CONTEXT\n{CONTEXT}\n\n### OUTPUT\nReturn ONLY JSON between markers:\n"
-            f"{BEGIN_IOC_JSON}\n{{SCHEMA}}\n{END_IOC_JSON}\n"
-            "Rules:\n- Keep EXACT keys.\n- Strings only.\n- No duplicates.\n- Empty arrays as [].\n- No extra keys.")
-        self.retry_enabled = llm_cfg.get("ioc_retry_enabled", True)
-        self.use_json_mode = llm_cfg.get("use_json_mode", True)
+        # Raw mode configuration (always enabled)
+        self.raw_system_prompt = llm_cfg.get("ioc_raw_system_prompt", self.DEFAULT_RAW_SYSTEM_PROMPT)
+        self.raw_user_template = llm_cfg.get("ioc_raw_user_template", self.DEFAULT_RAW_USER_TEMPLATE)
     
     def _build_context(self, aggregated: Dict[str, Any]) -> str:
         """Build concise context section from aggregated data for IOC extraction."""
@@ -170,7 +136,7 @@ Keep the format clean and easy to copy. List each unique indicator once."""
     
     def run(self, llm_client, aggregated: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Orchestrate IOC extraction.
+        Orchestrate IOC extraction using raw markdown mode.
         
         Args:
             llm_client: LLM client instance
@@ -178,31 +144,32 @@ Keep the format clean and easy to copy. List each unique indicator once."""
             
         Returns:
             Dict with IOC results or error info:
-            - Raw mode success: {"raw_text": "...", "attempts": 1, "model": "..."}
-            - Legacy mode: {"error": "legacy_mode_not_available", "attempts": 0}
+            - Success: {"raw_text": "...", "attempts": 1, "model": "..."}
             - Failure: {"error": "...", "raw_text": "", "attempts": 1}
         """
         llm_cfg = self.config.get("llm", {})
         ioc_model = llm_cfg.get("ioc_model") or llm_cfg.get("model", "gpt-4o-mini")
         
-        # Check if legacy mode is requested
-        if not self.raw_mode:
-            self.logger.error("Legacy structured IOC mode is no longer supported")
-            return {
-                "error": "legacy_mode_not_available: Structured IOC extraction has been deprecated. Please use raw mode (set ioc_raw_mode=true or omit it from config).",
-                "attempts": 0,
-                "model": ioc_model
-            }
+        # Get UI locale for language adaptation
+        ui_locale = self.config.get("ui", {}).get("default_language", "en")
+        locale_map = {
+            "en": "English",
+            "ru": "Russian",
+            "kz": "Kazakh"
+        }
+        locale_name = locale_map.get(ui_locale, "English")
         
         # Raw mode path
-        self.logger.info(f"IOC raw extraction using model={ioc_model}")
+        self.logger.info(f"IOC raw extraction using model={ioc_model}, locale={ui_locale}")
         
         try:
             # Build context
             context = self._build_context(aggregated)
             
-            # Build prompts
-            user_prompt = self.raw_user_template.replace("{CONTEXT}", context)
+            # Build prompts with locale instruction
+            locale_instruction = f"\n\nIMPORTANT: The user interface language is {locale_name}. Please provide all explanatory text and descriptions in {locale_name}. However, keep technical indicators (IPs, domains, file paths, hashes, etc.) and code exactly as they are without translation."
+            
+            user_prompt = self.raw_user_template.replace("{CONTEXT}", context) + locale_instruction
             
             # Truncate if too long (rough estimate: 1 token ~= 4 chars)
             # Keep under 20k chars to be safe
@@ -211,9 +178,11 @@ Keep the format clean and easy to copy. List each unique indicator once."""
                 self.logger.warning(f"User prompt too long ({len(user_prompt)} chars), truncating to {max_chars}")
                 user_prompt = user_prompt[:max_chars] + "\n\n[... truncated for length ...]"
             
+            # Add locale context to system prompt as well
+            system_prompt_with_locale = f"{self.raw_system_prompt}\n\nUser interface locale: {locale_name}. Provide explanatory text in {locale_name}, but keep technical indicators unchanged."
+            
             # Combine system and user prompts for complete_once
-            # LLMClient.complete_once expects a single prompt string
-            combined_prompt = f"{self.raw_system_prompt}\n\n{user_prompt}"
+            combined_prompt = f"{system_prompt_with_locale}\n\n{user_prompt}"
             
             # Single LLM call, no JSON mode, no retry
             response = llm_client.complete_once(

@@ -5,8 +5,16 @@ from typing import Dict, Any, Optional
 JSON_BLOCK_RE = re.compile(r"\{.*?\}", re.DOTALL)
 
 class Summarizer:
-    def __init__(self, logger):
+    def __init__(self, logger, config: Optional[Dict[str, Any]] = None):
+        """
+        Initialize Summarizer with configuration.
+        
+        Args:
+            logger: Logger instance
+            config: Configuration dictionary
+        """
         self.logger = logger
+        self.config = config or {}
     
     def extract_first_json_block(self, text: str) -> Optional[str]:
         """
@@ -24,6 +32,25 @@ class Summarizer:
         return None
 
     def build_prompt(self, system_prompt: str, aggregated: Dict[str, Any]) -> str:
+        """
+        Build LLM prompt from aggregated data with locale support.
+        
+        Args:
+            system_prompt: System prompt from config
+            aggregated: Aggregated VT data
+            
+        Returns:
+            Full prompt string with locale context
+        """
+        # Get UI locale for language adaptation
+        ui_locale = self.config.get("ui", {}).get("default_language", "en")
+        locale_map = {
+            "en": "English",
+            "ru": "Russian",
+            "kz": "Kazakh"
+        }
+        locale_name = locale_map.get(ui_locale, "English")
+        
         b = aggregated.get("basic", {})
         lines = []
         lines.append("FILE SUMMARY:")
@@ -61,10 +88,16 @@ class Summarizer:
             lines.append("None")
         lines.append("")
         lines.append("TASK:")
+        lines.append(f"User interface locale: {locale_name}. Provide all narrative and explanatory text in {locale_name}, but keep service keys (verdict, confidence, etc.), hashes, technical indicators, and code blocks in their original form without translation.")
+        lines.append("")
         lines.append("Return FIRST a strict JSON object with fields: verdict (malicious|suspicious|benign|unknown), confidence (0-100 integer), key_capabilities (list of short strings), mitre_techniques (list of technique IDs like T1059), recommended_actions (list), raw_summary (short technical paragraph).")
-        lines.append("Then after the JSON, provide a detailed free-text analysis in the same language of input (English).")
+        lines.append(f"Then after the JSON, provide a detailed free-text analysis in {locale_name}.")
         user_prompt = "\n".join(lines)
-        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+        
+        # Add locale context to system prompt
+        system_with_locale = f"{system_prompt}\n\nUser interface locale: {locale_name}. Generate main analysis text in {locale_name}."
+        
+        full_prompt = f"{system_with_locale}\n\n{user_prompt}"
         return full_prompt
 
     def extract_json_and_text(self, full_response: str):
