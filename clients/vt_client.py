@@ -1,6 +1,6 @@
 import time
 import requests
-from typing import Dict, Any, Optional, Union, Tuple
+from typing import Dict, Any, Optional
 
 class VTClientError(Exception):
     """Base VirusTotal client exception."""
@@ -19,22 +19,27 @@ class VTUnexpectedStatus(VTClientError):
 
 class VTClient:
     """
-    VirusTotal V3 API client (focused subset).
+    VirusTotal V3 API client (subset for JUMAL).
 
-    Notes:
-      - Endpoints used:
-          /files/{id}
-          /files/{id}/behaviours          (plural form to fetch all behavior reports)
-          /files/{id}/attack_techniques
-          /files/{id}/comments
-          /files/{id}/crowdsourced_yara_rulesets
-          /files/{id}/crowdsourced_sigma_rules
-      - Rate limiting:
-          Enforces a minimum interval (min_interval) between *any* requests.
-          On 429: sleeps a fixed 15s (configurable via on_rate_limit_sleep()).
-      - Retries:
-          Applied only to transient conditions: 429, 5xx, network exceptions, JSON parse errors.
-          Does NOT retry 400/401/403/404 (except you may choose to treat 404 as final).
+    Endpoints used:
+      - /files/{hash}
+      - /files/{hash}/behaviours
+      - /files/{hash}/attack_techniques
+      - /files/{hash}/comments
+      - /files/{hash}/crowdsourced_yara_rulesets
+      - /files/{hash}/crowdsourced_sigma_rules
+
+    Backward-compatible aliases still available:
+      - get_behaviour() -> get_behaviours()
+      - get_yara_ruleset() -> get_crowdsourced_yara_rulesets()
+      - get_sigma_rules() -> get_crowdsourced_sigma_rules()
+
+    Unified success schema:
+      {"ok": True, "status": 200, "data": <json dict>}
+    Not found:
+      {"ok": False, "status": 404, "error": "not_found"}
+
+    Raises VTAuthError for 401 / 403 (unless caller chooses to catch to degrade gracefully).
     """
 
     RATE_LIMIT_SLEEP_ON_429 = 15
@@ -70,13 +75,13 @@ class VTClient:
             "User-Agent": self.user_agent
         })
 
-    # ---------------------- Internal Utilities ----------------------
+    # ------------- Internal Utilities -------------
 
     def _rate_limit_sleep(self):
         elapsed = time.time() - self._last_request_ts
         if elapsed < self.min_interval:
             wait = self.min_interval - elapsed
-            self.logger.debug(f"[VT] Sleeping {wait:.2f}s to respect min_interval.")
+            self.logger.debug(f"[VT] Sleeping {wait:.2f}s (min interval).")
             time.sleep(wait)
 
     def _sleep_backoff(self, attempt: int):
@@ -85,10 +90,11 @@ class VTClient:
         time.sleep(delay)
 
     def _handle_429(self, attempt: int):
-        self.logger.warning(f"[VT] 429 rate limit encountered. Sleeping {self.RATE_LIMIT_SLEEP_ON_429}s.")
+        self.logger.warning(f"[VT] 429 rate limited. Sleeping {self.RATE_LIMIT_SLEEP_ON_429}s.")
         time.sleep(self.RATE_LIMIT_SLEEP_ON_429)
+        self._last_request_ts = time.time()
         if attempt >= self.max_retries:
-            raise VTRateLimitError("Exceeded max retries after repeated 429 responses.")
+            raise VTRateLimitError("Exceeded max retries after 429 responses.")
 
     def _request(
         self,
@@ -116,64 +122,59 @@ class VTClient:
             self._last_request_ts = time.time()
             status = resp.status_code
 
-            # Success
             if status == 200:
                 try:
                     data = resp.json()
                     return {"ok": True, "status": status, "data": data}
                 except ValueError as e:
-                    self.logger.error(f"[VT] JSON decode error: {e}")
+                    self.logger.error(f"[VT] JSON parse error: {e}")
                     if attempt >= self.max_retries:
                         raise VTClientError("Invalid JSON after max retries") from e
                     self._sleep_backoff(attempt)
                     continue
 
-            # Not found
             if status == 404:
                 self.logger.info(f"[VT] Not found: {url}")
-                return {"ok": False, "status": status, "error": "not_found"}
+                return {"ok": False, "status": 404, "error": "not_found"}
 
-            # Auth / permission
             if status in (400, 401, 403):
-                msg = f"Client/authorization error {status}: {resp.text[:200]}"
+                body = resp.text[:300]
+                msg = f"Client/auth error {status}: {body}"
                 self.logger.error(f"[VT] {msg}")
                 if status in (401, 403):
                     raise VTAuthError(msg)
                 raise VTClientError(msg)
 
-            # Rate limit
             if status == 429:
                 if attempt >= self.max_retries:
                     raise VTRateLimitError("Max retries on 429.")
                 self._handle_429(attempt)
                 continue
 
-            # Server errors
             if 500 <= status < 600:
-                self.logger.warning(f"[VT] Server error {status}. Body: {resp.text[:200]}")
+                self.logger.warning(f"[VT] Server error {status}: {resp.text[:200]}")
                 if attempt >= self.max_retries:
                     raise VTServerError(f"Server error {status} after retries.")
                 self._sleep_backoff(attempt)
                 continue
 
-            # Unexpected
-            self.logger.error(f"[VT] Unexpected status {status}. Body: {resp.text[:200]}")
-            raise VTUnexpectedStatus(f"Unexpected status {status}")
+            body_preview = resp.text[:300]
+            self.logger.error(f"[VT] Unexpected status {status}: {body_preview}")
+            raise VTUnexpectedStatus(f"Unexpected status {status}: {body_preview}")
 
-    # ---------------------- Public Methods ----------------------
+    # ------------- Public API -------------
 
     def get_file_report(self, h: str) -> Dict[str, Any]:
         return self._request("GET", f"/files/{h}")
 
     def get_behaviours(self, h: str) -> Dict[str, Any]:
-        # Using plural form as per docs for all sandbox behaviour reports.
         return self._request("GET", f"/files/{h}/behaviours")
 
     def get_attack_techniques(self, h: str) -> Dict[str, Any]:
         return self._request("GET", f"/files/{h}/attack_techniques")
 
     def get_comments(self, h: str, limit: int = 20) -> Dict[str, Any]:
-        limit = max(1, min(limit, 40))  # enforce a reasonable cap
+        limit = max(1, min(limit, 40))
         return self._request("GET", f"/files/{h}/comments", params={"limit": limit})
 
     def get_crowdsourced_yara_rulesets(self, h: str) -> Dict[str, Any]:
@@ -181,3 +182,14 @@ class VTClient:
 
     def get_crowdsourced_sigma_rules(self, h: str) -> Dict[str, Any]:
         return self._request("GET", f"/files/{h}/crowdsourced_sigma_rules")
+
+    # ------------- Backward-Compatible Aliases -------------
+
+    def get_behaviour(self, h: str) -> Dict[str, Any]:
+        return self.get_behaviours(h)
+
+    def get_yara_ruleset(self, h: str) -> Dict[str, Any]:
+        return self.get_crowdsourced_yara_rulesets(h)
+
+    def get_sigma_rules(self, h: str) -> Dict[str, Any]:
+        return self.get_crowdsourced_sigma_rules(h)
