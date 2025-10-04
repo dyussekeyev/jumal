@@ -82,11 +82,11 @@ class VTClient:
         time.sleep(delay)
 
     def _handle_429(self, attempt: int):
+        if attempt >= self.max_retries:
+            raise VTRateLimitError("Exceeded max retries after 429 responses.")
         self.logger.warning(f"[VT] 429 rate limited. Sleeping {self.RATE_LIMIT_SLEEP_ON_429}s.")
         time.sleep(self.RATE_LIMIT_SLEEP_ON_429)
         self._last_request_ts = time.time()
-        if attempt >= self.max_retries:
-            raise VTRateLimitError("Exceeded max retries after 429 responses.")
 
     def _request(
         self,
@@ -138,8 +138,6 @@ class VTClient:
                 raise VTClientError(msg)
 
             if status == 429:
-                if attempt >= self.max_retries:
-                    raise VTRateLimitError("Max retries on 429.")
                 self._handle_429(attempt)
                 continue
 

@@ -43,16 +43,23 @@ class ConfigManager:
         Normalize configuration values.
         
         Ensures ioc_model is set to model value if not specified.
+        
+        Returns:
+            bool: True if any changes were made, False otherwise
         """
         if self._config is None:
-            return
+            return False
         
+        changed = False
         llm = self._config.get("llm", {})
         if "llm" in self._config and isinstance(llm, dict):
             # If ioc_model is not set or empty, set it to model
             if "ioc_model" not in llm or llm.get("ioc_model") in (None, ""):
                 model = llm.get("model", "meta-llama/llama-3.2-1b-instruct")
                 self._config["llm"]["ioc_model"] = model
+                changed = True
+        
+        return changed
 
     def load(self) -> Dict[str, Any]:
         if not os.path.exists(self.path):
@@ -62,8 +69,9 @@ class ConfigManager:
         else:
             with open(self.path, "r", encoding="utf-8") as f:
                 self._config = json.load(f)
-            self._normalize()
-            self.save()  # Save to persist normalized values
+            # Only save if normalization made changes
+            if self._normalize():
+                self.save()
         return self._config
 
     def save(self):
