@@ -27,17 +27,10 @@ It queries VirusTotal for static, behavioral, MITRE ATT&CK, comments, and crowds
   - `mitre_techniques`: list of technique IDs
   - `recommended_actions`: list
   - `raw_summary`: short technical paragraph
-- Extracted IOC fields (second LLM):
-  - `process_names`: Unique process/executable names
-  - `network_ips`: IP addresses
-  - `network_domains`: Domain names
-  - `urls`: Full URLs with protocol
-  - `file_paths`: File system paths
-  - `registry_keys`: Registry keys/paths
-  - `mutexes`: Mutex names
-  - `yara_rules`: YARA rule names
-  - `sigma_rules`: Sigma rule names/titles
-  - `other_iocs`: Other indicators
+- Extracted IOC output (second LLM - raw mode):
+  - Markdown-formatted sections with indicators organized by type
+  - Sections: Processes, Network IPs, Network Domains, URLs, File Paths, Registry Keys, Mutexes, YARA Rules, Sigma Rules, Other IOCs
+  - Human-readable format for easy copying and analysis
 - GUI (tkinter) with tabs:
   - Summary (verdict & analysis)
   - Indicators / Rules (AI-extracted structured IOCs, YARA, Sigma)
@@ -127,20 +120,23 @@ JUMAL uses a **dual LLM approach** for comprehensive malware analysis:
   2. Free-form analysis text.
 - The app attempts to extract the first JSON object; if invalid, displays parsing failure message.
 
-### Second LLM Pass: IOC Extraction (Non-streaming)
+### Second LLM Pass: IOC Extraction (Raw Mode)
 
-- Dedicated prompt for extracting structured Indicators of Compromise.
-- Non-streaming call with `temperature=0` for deterministic output.
-- Optional separate model configuration via `llm.ioc_model` in config (fallback to main model if not set).
-- Input context: processes, network, comments, YARA/Sigma results, basic metadata (truncated to save tokens).
-- Output: Strict JSON schema with 10 IOC categories (process names, IPs, domains, URLs, file paths, registry keys, mutexes, YARA rules, Sigma rules, other IOCs).
-- **Configurable prompts**: System prompt and prompt template can be customized via config (use `{CONTEXT}` and `{SCHEMA}` placeholders).
-- **JSON markers**: Uses `BEGIN_IOC_JSON` and `END_IOC_JSON` markers for robust parsing, with fallback to regex extraction.
-- **JSON mode support**: When `use_json_mode` is `true`, includes `response_format={"type":"json_object"}` for OpenAI-compatible providers to enforce JSON output.
-- **Retry logic**: If first IOC extraction produces malformed JSON and `ioc_retry_enabled` is `true`, automatically retries with a repair prompt.
-- **Normalization**: Enforces uniqueness, limits (max 100 items per category), and string truncation (≤300 chars).
-- **Error handling**: If IOC extraction fails after retry, displays warning in Indicators tab with fallback data and error details.
-- **Report inclusion**: IOC results saved under `ioc_summary` key in JSON reports with metadata (attempts, raw response excerpt).
+**New in v0.2+**: IOC extraction now uses **raw mode** by default, which delegates all formatting to the LLM without local JSON parsing.
+
+- **Raw markdown output**: LLM produces human-readable sections (Processes, Network IPs, Domains, URLs, File Paths, Registry Keys, Mutexes, YARA Rules, Sigma Rules, Other IOCs).
+- **No parsing/validation**: Output is displayed verbatim in the Indicators/Rules tab with a copy button.
+- **Single-pass extraction**: No retry logic, simpler error handling.
+- **Configurable prompts**: Customize via `llm.ioc_raw_system_prompt` and `llm.ioc_raw_user_template` in config.
+- **Model configuration**: Optional separate model via `llm.ioc_model` (fallback to main model if not set).
+
+**Deprecated**: The legacy structured JSON-based IOC extraction (with `BEGIN_IOC_JSON` markers, retry logic, and normalization) has been removed. If you set `ioc_raw_mode=false`, the system will return an error.
+
+**Why this change?**
+- Eliminates `parse_failed_after_retry` errors when LLM doesn't follow strict JSON schema.
+- Provides better UX with readable markdown output.
+- Simplifies codebase by removing complex parsing/retry/normalization logic.
+- Gives LLM full control over formatting, making it more flexible and reliable.
 
 ---
 
@@ -163,10 +159,9 @@ Example:
     "system_prompt": "You are a malware analysis assistant...",
     "stream_enabled": true,
     "ioc_model": null,
-    "ioc_system_prompt": "You are a DFIR assistant. Extract only factual Indicators of Compromise.",
-    "ioc_prompt_template": "### CONTEXT\n{CONTEXT}\n\n### OUTPUT\nReturn ONLY JSON between markers:\nBEGIN_IOC_JSON\n{SCHEMA}\nEND_IOC_JSON\nRules:\n- Keep EXACT keys.\n- Strings only.\n- No duplicates.\n- Empty arrays as [].\n- No extra keys.",
-    "ioc_retry_enabled": true,
-    "use_json_mode": true
+    "ioc_raw_mode": true,
+    "ioc_raw_system_prompt": "You are a DFIR assistant specializing in malware analysis...",
+    "ioc_raw_user_template": "Based on the following malware behavior data, extract and organize all Indicators of Compromise...\n\n{CONTEXT}\n\n..."
   },
   "ui": {
     "default_language": "en"
@@ -190,10 +185,15 @@ Edit key fields inside the UI Config tab or manually in file.
 **Configuration Notes**:
 - `llm.ioc_model`: Optional. If set to `null` or omitted, the main `llm.model` is used for IOC extraction. You can specify a different model (e.g., a faster/cheaper model) for the non-streaming IOC extraction pass.
 - `llm.stream_enabled`: Applies only to the first LLM pass (main analysis). IOC extraction is always non-streaming.
-- `llm.ioc_system_prompt`: System prompt for the IOC extraction pass. Customize to adjust IOC extraction behavior.
-- `llm.ioc_prompt_template`: Template for the IOC extraction prompt. Use `{CONTEXT}` and `{SCHEMA}` placeholders. Supports markers `BEGIN_IOC_JSON` and `END_IOC_JSON` for robust parsing.
-- `llm.ioc_retry_enabled`: If `true`, retries IOC extraction with a repair prompt if the first attempt produces malformed JSON (default: `true`).
-- `llm.use_json_mode`: If `true` and the provider is OpenAI-compatible, includes `response_format={"type":"json_object"}` in the API call for structured JSON output (default: `true`).
+- `llm.ioc_raw_mode`: (Default: `true`) Enables raw markdown mode for IOC extraction. Set to `false` to use legacy structured mode (deprecated and will return an error).
+- `llm.ioc_raw_system_prompt`: System prompt for raw mode IOC extraction. Customize to adjust behavior.
+- `llm.ioc_raw_user_template`: Template for raw mode IOC extraction prompt. Use `{CONTEXT}` placeholder for aggregated data.
+
+**Deprecated Configuration Keys** (ignored in raw mode):
+- `llm.ioc_system_prompt`: Legacy system prompt for structured JSON extraction.
+- `llm.ioc_prompt_template`: Legacy template with `BEGIN_IOC_JSON` markers.
+- `llm.ioc_retry_enabled`: Retry logic is not used in raw mode.
+- `llm.use_json_mode`: JSON mode flag is not used in raw mode.
 
 ---
 
@@ -232,20 +232,9 @@ python main.py
     "free_text": "Extended analysis..."
   },
   "ioc_summary": {
-    "iocs": {
-      "process_names": ["cmd.exe", "powershell.exe"],
-      "network_ips": ["192.168.1.1", "10.0.0.1"],
-      "network_domains": ["evil.com", "malware.net"],
-      "urls": ["http://evil.com/payload"],
-      "file_paths": ["C:\\temp\\malware.exe"],
-      "registry_keys": ["HKLM\\Software\\Malware"],
-      "mutexes": ["Global\\MalwareMutex"],
-      "yara_rules": ["MalwareRule1", "MalwareRule2"],
-      "sigma_rules": ["SuspiciousCommand"],
-      "other_iocs": ["PDB path", "..."]
-    },
-    "raw_response": "...truncated LLM response...",
-    "attempts": 1
+    "raw_text": "## Processes\n- cmd.exe\n- powershell.exe\n\n## Network IPs\n- 192.168.1.1\n- 10.0.0.1\n\n## Network Domains\n- evil.com\n- malware.net\n\n## URLs\n- http://evil.com/payload\n\n## File Paths\n- C:\\temp\\malware.exe\n\n## Registry Keys\n- HKLM\\Software\\Malware\n\n## Mutexes\n- Global\\MalwareMutex\n\n## YARA Rules\n- MalwareRule1\n- MalwareRule2\n\n## Sigma Rules\n- SuspiciousCommand\n\n## Other IOCs\n- PDB path: ...",
+    "attempts": 1,
+    "model": "gpt-4o-mini"
   },
   "meta": {
     "generator": "JUMAL 0.1",
