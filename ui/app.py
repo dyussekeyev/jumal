@@ -92,9 +92,9 @@ class JUMALApp:
         )
         llm_cfg = self.config.get("llm", {})
         self.llm_client = LLMClient(
-            base_url=llm_cfg.get("provider_url", "https://api.openai.com/v1"),
+            base_url=llm_cfg.get("provider_url", "https://openrouter.ai/api/v1"),
             api_key=llm_cfg.get("api_key", ""),
-            model=llm_cfg.get("model", "gpt-4o-mini"),
+            model=llm_cfg.get("model", "meta-llama/llama-3.2-1b-instruct"),
             stream_enabled=llm_cfg.get("stream_enabled", True),
             timeout=net_cfg.get("request_timeout_seconds", 30),
             logger=self.logger
@@ -136,7 +136,7 @@ class JUMALApp:
         # Indicators / Rules tab
         indicators_top_frame = ttk.Frame(self.frame_indicators)
         indicators_top_frame.pack(fill=tk.X, pady=5, padx=5)
-        ttk.Button(indicators_top_frame, text=self._t("btn_copy_summary"), command=self._on_copy_indicators).pack(side=tk.LEFT)
+        ttk.Button(indicators_top_frame, text=self._t("btn_copy_indicators"), command=self._on_copy_indicators).pack(side=tk.LEFT)
         
         self.text_indicators = scrolledtext.ScrolledText(self.frame_indicators, wrap=tk.WORD, state=tk.DISABLED)
         self.text_indicators.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -144,7 +144,7 @@ class JUMALApp:
         # Raw tab
         raw_top_frame = ttk.Frame(self.frame_raw)
         raw_top_frame.pack(fill=tk.X, pady=5, padx=5)
-        ttk.Button(raw_top_frame, text=self._t("btn_copy_all"), command=self._on_copy_raw).pack(side=tk.LEFT)
+        ttk.Button(raw_top_frame, text=self._t("btn_copy_raw"), command=self._on_copy_raw).pack(side=tk.LEFT)
         
         self.text_raw = scrolledtext.ScrolledText(self.frame_raw, wrap=tk.WORD, state=tk.DISABLED)
         self.text_raw.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -153,8 +153,10 @@ class JUMALApp:
         cfg_frame = ttk.Frame(self.frame_config)
         cfg_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         self.var_vt_key = tk.StringVar(value=self.config.get("virustotal", {}).get("api_key", ""))
+        self.var_vt_base_url = tk.StringVar(value=self.config.get("virustotal", {}).get("base_url", "https://www.virustotal.com/api/v3"))
         self.var_llm_key = tk.StringVar(value=self.config.get("llm", {}).get("api_key", ""))
-        self.var_llm_model = tk.StringVar(value=self.config.get("llm", {}).get("model", "gpt-4o-mini"))
+        self.var_llm_provider_url = tk.StringVar(value=self.config.get("llm", {}).get("provider_url", "https://openrouter.ai/api/v1"))
+        self.var_llm_model = tk.StringVar(value=self.config.get("llm", {}).get("model", "meta-llama/llama-3.2-1b-instruct"))
         self.var_ioc_model = tk.StringVar(value=self.config.get("llm", {}).get("ioc_model", ""))
         self.var_user_agent = tk.StringVar(value=self.config.get("network", {}).get("user_agent", "JUMAL/0.1"))
         self.var_system_prompt = tk.StringVar(value=self.config.get("llm", {}).get("system_prompt", ""))
@@ -165,7 +167,9 @@ class JUMALApp:
         row = 0
         for label, var in [
             (self._t("cfg_vt_api_key"), self.var_vt_key),
+            (self._t("cfg_vt_base_url"), self.var_vt_base_url),
             (self._t("cfg_llm_api_key"), self.var_llm_key),
+            (self._t("cfg_llm_provider_url"), self.var_llm_provider_url),
             (self._t("cfg_llm_model"), self.var_llm_model),
             (self._t("cfg_ioc_model"), self.var_ioc_model),
             (self._t("cfg_user_agent"), self.var_user_agent),
@@ -592,10 +596,12 @@ class JUMALApp:
         
         new_cfg = {
             "virustotal": {
-                "api_key": self.var_vt_key.get()
+                "api_key": self.var_vt_key.get(),
+                "base_url": self.var_vt_base_url.get()
             },
             "llm": {
                 "api_key": self.var_llm_key.get(),
+                "provider_url": self.var_llm_provider_url.get(),
                 "model": self.var_llm_model.get(),
                 "ioc_model": self.var_ioc_model.get() if self.var_ioc_model.get().strip() else None,
                 "system_prompt": self.system_prompt_box.get('1.0', tk.END).strip(),
@@ -624,8 +630,10 @@ class JUMALApp:
     def _on_reset_config(self):
         """Reset configuration fields to currently saved values."""
         self.var_vt_key.set(self.config.get("virustotal", {}).get("api_key", ""))
+        self.var_vt_base_url.set(self.config.get("virustotal", {}).get("base_url", "https://www.virustotal.com/api/v3"))
         self.var_llm_key.set(self.config.get("llm", {}).get("api_key", ""))
-        self.var_llm_model.set(self.config.get("llm", {}).get("model", "gpt-4o-mini"))
+        self.var_llm_provider_url.set(self.config.get("llm", {}).get("provider_url", "https://openrouter.ai/api/v1"))
+        self.var_llm_model.set(self.config.get("llm", {}).get("model", "meta-llama/llama-3.2-1b-instruct"))
         self.var_ioc_model.set(self.config.get("llm", {}).get("ioc_model", ""))
         self.var_user_agent.set(self.config.get("network", {}).get("user_agent", "JUMAL/0.1"))
         self.var_lang.set(self.current_lang)
