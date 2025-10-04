@@ -184,8 +184,8 @@ Example:
 Edit key fields inside the UI Config tab or manually in file.
 
 **Configuration Notes**:
-- **GUI Editable Fields**: The following fields can now be edited directly in the GUI Config tab: `virustotal.base_url`, `llm.provider_url`, and `llm.model`. Changes are saved to `config.json` and take effect immediately after clicking Apply.
-- `llm.ioc_model`: Optional. If omitted or set to `null`/empty, the application automatically sets `ioc_model` to the value of `model` upon load/save. This ensures the effective model is always explicit in the config and saved reports. You can specify a different model (e.g., a faster/cheaper model) for the non-streaming IOC extraction pass.
+- **GUI Editable Fields**: The following fields can now be edited directly in the GUI Config tab: `virustotal.base_url`, `llm.provider_url`, and `llm.model`. Changes are saved to `config.json` an[...]
+- `llm.ioc_model`: Optional. If omitted or set to `null`/empty, the application automatically sets `ioc_model` to the value of `model` upon load/save. This ensures the effective model is always e[...]
 - `llm.stream_enabled`: Applies only to the first LLM pass (main analysis). IOC extraction is always non-streaming.
 - `llm.ioc_raw_system_prompt`: System prompt for IOC extraction. Customize to adjust behavior.
 - `llm.ioc_raw_user_template`: Template for IOC extraction prompt. Use `{CONTEXT}` placeholder for aggregated data.
@@ -203,6 +203,92 @@ pip install -r requirements.txt
 # Insert your API keys into config.json
 python main.py
 ```
+
+---
+
+## Local LLM (Ollama)
+
+You can run a local lightweight model (e.g. `llama3.2:1b`) via [Ollama](https://ollama.com/) to perform analysis without sending data to external LLM providers.
+
+### 1. Contents
+
+Directory `ollama/` contains:
+- `Dockerfile` — builds an image with the model pre-pulled.
+- `docker-compose.yml` — runs the Ollama server and pulls the model on startup.
+
+### 2. Quick Start (Compose)
+
+```bash
+cd ollama
+docker compose up -d
+# or: docker-compose up -d (older Docker versions)
+```
+
+Port `11434` will be exposed locally.
+
+### 3. (Optional) Pre-build Image
+
+If you prefer the model to be already cached in the image:
+
+```bash
+cd ollama
+docker build -t jumal-ollama .
+docker run -d --name ollama -p 11434:11434 jumal-ollama
+```
+
+### 4. Pull Model Manually (If Needed)
+
+Inside a running container or host (if native install):
+
+```bash
+ollama pull llama3.2:1b
+```
+
+### 5. Configure JUMAL to Use Local Model
+
+Adjust `config.json`:
+
+```json
+"llm": {
+  "provider_url": "http://localhost:11434",
+  "api_key": "",
+  "model": "llama3.2:1b",
+  "system_prompt": "...",
+  "stream_enabled": true,
+  "ioc_model": null,
+  "ioc_raw_system_prompt": "...",
+  "ioc_raw_user_template": "..."
+}
+```
+
+Notes:
+- Ollama’s native API differs from the OpenAI Chat API. If the current LLM client expects strict OpenAI-compatible endpoints (`/v1/chat/completions`), an adapter layer may be required unless Ollama's OpenAI compatibility mode is enabled in your version.
+- Model name in config must exactly match what `ollama list` shows (e.g. `llama3.2:1b`).
+- Leave `api_key` empty for local use.
+
+### 6. Testing Connectivity
+
+A simple curl test:
+
+```bash
+curl http://localhost:11434/api/tags
+```
+
+Should return a JSON list of pulled models.
+
+### 7. Privacy Considerations
+
+Running locally keeps all VirusTotal-derived context on your machine (only VT API calls leave your environment). Ensure you trust any added community models.
+
+### 8. Русская Краткая Инструкция
+
+1. `cd ollama && docker compose up -d`  
+2. Убедитесь, что порт `11434` открыт.  
+3. В `config.json` установите:
+   - `"provider_url": "http://localhost:11434"`
+   - `"model": "llama3.2:1b"`
+4. Перезапустите приложение.  
+5. При необходимости вручную выполните `ollama pull llama3.2:1b`.
 
 ---
 
@@ -229,7 +315,7 @@ python main.py
     "free_text": "Extended analysis..."
   },
   "ioc_summary": {
-    "raw_text": "## Processes\n- cmd.exe\n- powershell.exe\n\n## Network IPs\n- 192.168.1.1\n- 10.0.0.1\n\n## Network Domains\n- evil.com\n- malware.net\n\n## URLs\n- http://evil.com/payload\n\n## File Paths\n- C:\\temp\\malware.exe\n\n## Registry Keys\n- HKLM\\Software\\Malware\n\n## Mutexes\n- Global\\MalwareMutex\n\n## YARA Rules\n- MalwareRule1\n- MalwareRule2\n\n## Sigma Rules\n- SuspiciousCommand\n\n## Other IOCs\n- PDB path: ...",
+    "raw_text": "## Processes\n- cmd.exe\n- powershell.exe\n\n## Network IPs\n- 192.168.1.1\n- 10.0.0.1\n\n## Network Domains\n- evil.com\n- malware.net\n\n## URLs\n- http://evil.com/payload\n\n#[...]",
     "attempts": 1,
     "model": "gpt-4o-mini"
   },
