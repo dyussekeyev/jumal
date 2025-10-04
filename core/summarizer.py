@@ -1,12 +1,27 @@
 import json
 import re
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 JSON_BLOCK_RE = re.compile(r"\{.*?\}", re.DOTALL)
 
 class Summarizer:
     def __init__(self, logger):
         self.logger = logger
+    
+    def extract_first_json_block(self, text: str) -> Optional[str]:
+        """
+        Extract the first JSON block from text.
+        
+        Args:
+            text: Text potentially containing JSON
+            
+        Returns:
+            JSON string or None
+        """
+        match = JSON_BLOCK_RE.search(text)
+        if match:
+            return match.group(0)
+        return None
 
     def build_prompt(self, system_prompt: str, aggregated: Dict[str, Any]) -> str:
         b = aggregated.get("basic", {})
@@ -53,17 +68,27 @@ class Summarizer:
         return full_prompt
 
     def extract_json_and_text(self, full_response: str):
-        # naive extraction: find first balanced looking JSON
-        match = JSON_BLOCK_RE.search(full_response)
+        """
+        Extract JSON and free text from LLM response.
+        
+        Args:
+            full_response: Full LLM response text
+            
+        Returns:
+            Tuple of (parsed_json or None, free_text)
+        """
         parsed = None
         json_text = None
         free_text = full_response
-        if match:
-            candidate = match.group(0)
+        
+        # Use common extraction method
+        candidate = self.extract_first_json_block(full_response)
+        if candidate:
             try:
                 parsed = json.loads(candidate)
                 json_text = candidate
                 free_text = full_response.replace(candidate, "").strip()
             except Exception as e:
                 self.logger.warning(f"JSON parse failed: {e}")
+        
         return parsed, free_text

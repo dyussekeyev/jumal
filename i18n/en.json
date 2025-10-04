@@ -24,6 +24,7 @@
   "msg_fetch_yara": "Fetching YARA ruleset...",
   "msg_fetch_sigma": "Fetching Sigma rules...",
   "msg_llm_start": "Starting LLM analysis (streaming)...",
+  "msg_ioc_extraction": "Extracting IOCs (second LLM pass)...",
   "msg_not_found": "File not found on VirusTotal.",
   "msg_json_parse_fail": "Failed to parse JSON summary.",
   "msg_copied": "Summary copied to clipboard."

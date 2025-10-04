@@ -62,6 +62,33 @@ class LLMClient:
             yield from self._stream_ollama(prompt)
         else:
             yield from self._stream_openai(prompt)
+    
+    def complete_once(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        temperature: float = 0.0
+    ) -> str:
+        """
+        Non-streaming completion for structured extraction.
+        
+        Args:
+            prompt: The prompt to send
+            model: Optional model override (default: use self.model)
+            temperature: Temperature setting (default: 0.0 for deterministic)
+            
+        Returns:
+            Full completion text
+            
+        Raises:
+            LLMAuthError, LLMBadRequestError, LLMServerError, LLMClientError
+        """
+        use_model = model or self.model
+        
+        if self._is_ollama:
+            return self._complete_once_ollama(prompt, use_model, temperature)
+        else:
+            return self._complete_once_openai(prompt, use_model, temperature)
 
     # ---------- OpenAI style ----------
 
@@ -156,3 +183,58 @@ class LLMClient:
         if 500 <= status < 600:
             raise LLMServerError(f"LLM server error ({status}). Body: {preview}")
         raise LLMClientError(f"LLM unexpected status {status}. Body: {preview}")
+    
+    # ---------- Non-streaming completions ----------
+    
+    def _complete_once_openai(
+        self,
+        prompt: str,
+        model: str,
+        temperature: float
+    ) -> str:
+        """Non-streaming OpenAI-compatible completion."""
+        url = f"{self.base_url}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": temperature,
+            "stream": False
+        }
+        
+        r = requests.post(url, headers=headers, json=payload, timeout=self.timeout)
+        if r.status_code != 200:
+            self._raise_http_error(r)
+        
+        data = r.json()
+        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        return content
+    
+    def _complete_once_ollama(
+        self,
+        prompt: str,
+        model: str,
+        temperature: float
+    ) -> str:
+        """Non-streaming Ollama completion."""
+        url = f"{self.base_url}/api/chat"
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "options": {
+                "temperature": temperature
+            }
+        }
+        
+        r = requests.post(url, headers=headers, json=payload, timeout=self.timeout)
+        if r.status_code != 200:
+            self._raise_http_error(r)
+        
+        data = r.json()
+        content = data.get("message", {}).get("content", "")
+        return content

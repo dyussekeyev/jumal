@@ -10,6 +10,7 @@
     "provider_url": "https://api.openai.com/v1",
     "api_key": "PUT_YOUR_LLM_API_KEY_HERE",
     "model": "gpt-4o-mini",
+    "ioc_model": null,
     "system_prompt": "You are a malware analysis assistant. Provide concise, structured malware assessments.",
     "stream_enabled": true
   },
