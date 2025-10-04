@@ -71,16 +71,16 @@ config.json          # User configuration
 
 ---
 
-## VirusTotal Integration Details
+## VirusTotal Endpoints Used
 
-| Capability              | Endpoint (VT v3)                                | Notes |
-|-------------------------|--------------------------------------------------|-------|
-| File report             | `GET /files/{hash}`                              | Must exist before further queries |
-| Behavior reports        | `GET /files/{hash}/behaviours`                   | All available sandbox behaviors |
-| MITRE ATT&CK techniques | `GET /files/{hash}/attack_techniques`            | Summarized techniques |
-| Comments                | `GET /files/{hash}/comments?limit=20`            | Increase with pagination later |
-| YARA rulesets           | `GET /files/{hash}/crowdsourced_yara_rulesets`   | May return 404 if none |
-| Sigma rules             | `GET /files/{hash}/crowdsourced_sigma_rules`     | May return 404 if none |
+| Data Type                  | Endpoint                                            | Notes |
+|--------------------------- |-----------------------------------------------------|-------|
+| File report                | `/files/{hash}`                                     | Mandatory |
+| Behaviour (sandbox)        | `/files/{hash}/behaviours`                          | Optional (may require higher tier) |
+| MITRE ATT&CK summary       | `/files/{hash}/behaviour_mitre_trees`               | Correct endpoint replacing previous `attack_techniques` usage |
+| Comments                   | `/files/{hash}/comments?limit=20`                   | Latest N comments |
+| Crowdsourced YARA rulesets | `/files/{hash}/crowdsourced_yara_rulesets`          | Optional |
+| Crowdsourced Sigma rules   | `/files/{hash}/crowdsourced_sigma_rules`            | Optional |
 
 ### Rate Limiting
 
