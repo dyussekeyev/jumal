@@ -2,11 +2,10 @@ import json
 import re
 from typing import Dict, Any, Optional, Tuple, List
 
-# Constants for IOC extraction
+# Legacy constants kept for backward compatibility (no longer used in raw mode)
 BEGIN_IOC_JSON = "BEGIN_IOC_JSON"
 END_IOC_JSON = "END_IOC_JSON"
 
-# IOC schema definition
 IOC_SCHEMA = """{
   "process_names": [],        // Unique process/executable names
   "network_ips": [],          // IP addresses only
@@ -20,7 +19,7 @@ IOC_SCHEMA = """{
   "other_iocs": []            // Any other indicators
 }"""
 
-# Regex to find JSON blocks (both with and without markers)
+# Not used in raw mode
 JSON_BLOCK_RE = re.compile(r"\{.*?\}", re.DOTALL)
 
 
@@ -169,65 +168,6 @@ Keep the format clean and easy to copy. List each unique indicator once."""
         
         return "\n".join(lines)
     
-    def _build_prompts(self, aggregated: Dict[str, Any], json_mode: bool) -> Tuple[str, str]:
-        """
-        Build system and user prompts for IOC extraction.
-        
-        Args:
-            aggregated: Aggregated VT data
-            json_mode: Whether to use json_mode (affects marker inclusion)
-            
-        Returns:
-            Tuple of (system_prompt, user_prompt)
-        """
-        context = self._build_context(aggregated)
-        
-        # Build user prompt from template
-        user_prompt = self.prompt_template.replace("{CONTEXT}", context)
-        user_prompt = user_prompt.replace("{SCHEMA}", IOC_SCHEMA)
-        
-        # If json_mode is enabled, we might not need markers (but include them anyway for clarity)
-        # The markers help with parsing when json_mode is not available
-        
-        return self.system_prompt, user_prompt
-    
-    def _single_attempt(
-        self,
-        llm_client,
-        system_prompt: str,
-        user_prompt: str,
-        model: str,
-        temperature: float,
-        timeout: Optional[int],
-        json_mode: bool
-    ) -> str:
-        """
-        Perform a single LLM call for IOC extraction.
-        
-        Args:
-            llm_client: LLM client instance
-            system_prompt: System prompt
-            user_prompt: User prompt
-            model: Model to use
-            temperature: Temperature setting
-            timeout: Optional timeout
-            json_mode: Whether to use json_mode
-            
-        Returns:
-            Raw LLM response text
-        """
-        # For now, we send only user prompt since complete_once doesn't support system messages
-        # We prepend system prompt to user prompt
-        full_prompt = f"{system_prompt}\n\n{user_prompt}"
-        
-        return llm_client.complete_once(
-            prompt=full_prompt,
-            model=model,
-            temperature=temperature,
-            timeout=timeout,
-            json_mode=json_mode
-        )
-    
     def run(self, llm_client, aggregated: Dict[str, Any]) -> Dict[str, Any]:
         """
         Orchestrate IOC extraction.
@@ -300,167 +240,3 @@ Keep the format clean and easy to copy. List each unique indicator once."""
                 "attempts": 1,
                 "model": ioc_model
             }
-    
-    def _build_repair_prompt(self, failed_response: str, error_msg: str) -> str:
-        """Build a repair prompt for retry attempt."""
-        return (
-            f"The previous response failed to parse: {error_msg}\n\n"
-            f"Previous response (truncated):\n{failed_response[:500]}\n\n"
-            f"Please provide a corrected JSON response with the exact structure:\n"
-            f"{BEGIN_IOC_JSON}\n{IOC_SCHEMA}\n{END_IOC_JSON}\n\n"
-            "Ensure:\n"
-            "- Valid JSON syntax\n"
-            "- All 10 required keys present\n"
-            "- All values are arrays of strings\n"
-            "- No extra keys or comments"
-        )
-    
-    def _parse_and_normalize(self, full_text: str) -> Tuple[Optional[Dict[str, Any]], str]:
-        """
-        Parse IOC JSON from LLM response and normalize.
-        
-        Args:
-            full_text: Full LLM response text
-            
-        Returns:
-            Tuple of (normalized_dict or None, error_message)
-        """
-        # Try to extract JSON with markers first
-        parsed_json = self._extract_json_with_markers(full_text)
-        
-        if not parsed_json:
-            # Fall back to regex extraction
-            parsed_json = self._extract_json_fallback(full_text)
-        
-        if not parsed_json:
-            msg = "No valid JSON block found in IOC extraction response"
-            self.logger.warning(msg)
-            return None, msg
-        
-        # Validate and normalize
-        try:
-            normalized = self._normalize_ioc_data(parsed_json)
-            return normalized, ""
-        except Exception as e:
-            msg = f"IOC normalization failed: {e}"
-            self.logger.exception(msg)
-            return None, msg
-    
-    def _extract_json_with_markers(self, text: str) -> Optional[Dict[str, Any]]:
-        """Extract JSON between BEGIN_IOC_JSON and END_IOC_JSON markers."""
-        if BEGIN_IOC_JSON not in text or END_IOC_JSON not in text:
-            return None
-        
-        start_idx = text.find(BEGIN_IOC_JSON)
-        end_idx = text.find(END_IOC_JSON, start_idx)
-        
-        if start_idx == -1 or end_idx == -1:
-            return None
-        
-        # Extract text between markers
-        json_text = text[start_idx + len(BEGIN_IOC_JSON):end_idx].strip()
-        
-        try:
-            return json.loads(json_text)
-        except json.JSONDecodeError:
-            return None
-    
-    def _extract_json_fallback(self, text: str) -> Optional[Dict[str, Any]]:
-        """Extract first JSON object using regex."""
-        match = JSON_BLOCK_RE.search(text)
-        if not match:
-            return None
-        
-        try:
-            return json.loads(match.group(0))
-        except json.JSONDecodeError:
-            return None
-    
-    def _normalize_ioc_data(self, parsed: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Normalize IOC data: validate keys, deduplicate, limit items, truncate strings.
-        
-        Args:
-            parsed: Raw parsed JSON dict
-            
-        Returns:
-            Normalized dict
-            
-        Raises:
-            ValueError if structure is invalid
-        """
-        required_keys = [
-            "process_names", "network_ips", "network_domains", "urls",
-            "file_paths", "registry_keys", "mutexes", 
-            "yara_rules", "sigma_rules", "other_iocs"
-        ]
-        
-        # Ensure all required keys exist and are lists
-        for key in required_keys:
-            if key not in parsed:
-                parsed[key] = []
-            if not isinstance(parsed[key], list):
-                parsed[key] = []
-        
-        # Normalize each list: dedupe, limit, truncate
-        for key in required_keys:
-            unique_items = []
-            seen = set()
-            
-            for item in parsed[key][:100]:  # Max 100 items per category
-                # Convert to string and clean
-                item_str = str(item).strip()
-                
-                # Truncate to max 300 chars
-                if len(item_str) > 300:
-                    item_str = item_str[:300]
-                
-                # Add if non-empty and not seen
-                if item_str and item_str not in seen:
-                    unique_items.append(item_str)
-                    seen.add(item_str)
-            
-            parsed[key] = unique_items
-        
-        return parsed
-    
-    # Legacy methods for backward compatibility
-    def build_ioc_prompt(self, aggregated: Dict[str, Any]) -> str:
-        """
-        Build IOC extraction prompt (legacy method for backward compatibility).
-        
-        Args:
-            aggregated: Aggregated VT data structure
-            
-        Returns:
-            Prompt string for LLM
-        """
-        system_prompt, user_prompt = self._build_prompts(aggregated, self.use_json_mode)
-        return f"{system_prompt}\n\n{user_prompt}"
-    
-    def parse_ioc_json(self, full_text: str) -> Tuple[Optional[Dict[str, Any]], str]:
-        """
-        Parse IOC JSON from LLM response (legacy method for backward compatibility).
-        
-        Args:
-            full_text: Full LLM response text
-            
-        Returns:
-            Tuple of (parsed_json_dict or None, error_message)
-        """
-        return self._parse_and_normalize(full_text)
-    
-    def extract_first_json_block(self, text: str) -> Optional[str]:
-        """
-        Extract the first JSON block from text (helper method).
-        
-        Args:
-            text: Text potentially containing JSON
-            
-        Returns:
-            JSON string or None
-        """
-        match = JSON_BLOCK_RE.search(text)
-        if match:
-            return match.group(0)
-        return None
