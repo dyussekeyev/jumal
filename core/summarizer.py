@@ -119,9 +119,40 @@ class Summarizer:
         if candidate:
             try:
                 parsed = json.loads(candidate)
-                json_text = candidate
-                free_text = full_response.replace(candidate, "").strip()
+                # Re-serialize with ensure_ascii=False to preserve Unicode characters
+                # Use compact separators to normalize output
+                json_text = json.dumps(parsed, ensure_ascii=False, separators=(',', ':'))
+                # Remove only the first occurrence of the original JSON block
+                free_text = full_response.replace(candidate, "", 1).strip()
             except Exception as e:
                 self.logger.warning(f"JSON parse failed: {e}")
         
         return parsed, free_text
+    
+    def extract_json_pretty(self, full_response: str):
+        """
+        Extract JSON and free text from LLM response with pretty-printed JSON.
+        
+        Args:
+            full_response: Full LLM response text
+            
+        Returns:
+            Tuple of (parsed_json or None, pretty_json_str or None, free_text)
+        """
+        parsed = None
+        pretty_json_str = None
+        free_text = full_response
+        
+        # Use common extraction method
+        candidate = self.extract_first_json_block(full_response)
+        if candidate:
+            try:
+                parsed = json.loads(candidate)
+                # Pretty-print with ensure_ascii=False to preserve Unicode characters
+                pretty_json_str = json.dumps(parsed, ensure_ascii=False, indent=2)
+                # Remove only the first occurrence of the original JSON block
+                free_text = full_response.replace(candidate, "", 1).strip()
+            except Exception as e:
+                self.logger.warning(f"JSON parse failed: {e}")
+        
+        return parsed, pretty_json_str, free_text
