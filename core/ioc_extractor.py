@@ -1,4 +1,5 @@
 from typing import Dict, Any, Optional
+from core.prompt_selector import select_ioc_prompts
 
 
 class IOCExtractor:
@@ -60,9 +61,16 @@ Keep the format clean and easy to copy. List each unique indicator once."""
         # Load config or use defaults
         llm_cfg = self.config.get("llm", {})
         
-        # Raw mode configuration (always enabled)
-        self.raw_system_prompt = llm_cfg.get("ioc_raw_system_prompt", self.DEFAULT_RAW_SYSTEM_PROMPT)
-        self.raw_user_template = llm_cfg.get("ioc_raw_user_template", self.DEFAULT_RAW_USER_TEMPLATE)
+        # Determine which model will be used for IOC extraction
+        ioc_model = llm_cfg.get("ioc_model") or llm_cfg.get("model", "gpt-4o-mini")
+        
+        # Use prompt selector to get appropriate prompts based on model
+        self.raw_system_prompt, self.raw_user_template = select_ioc_prompts(
+            self.config,
+            ioc_model,
+            self.DEFAULT_RAW_SYSTEM_PROMPT,
+            self.DEFAULT_RAW_USER_TEMPLATE
+        )
     
     def _build_context(self, aggregated: Dict[str, Any]) -> str:
         """Build concise context section from aggregated data for IOC extraction."""

@@ -1,6 +1,7 @@
 import json
 import re
 from typing import Dict, Any, Optional
+from core.prompt_selector import select_system_prompt
 
 JSON_BLOCK_RE = re.compile(r"\{.*?\}", re.DOTALL)
 
@@ -36,12 +37,19 @@ class Summarizer:
         Build LLM prompt from aggregated data with locale support.
         
         Args:
-            system_prompt: System prompt from config
+            system_prompt: System prompt from config (may be overridden by model-specific prompt)
             aggregated: Aggregated VT data
             
         Returns:
             Full prompt string with locale context
         """
+        # Get model name to select appropriate prompt
+        llm_cfg = self.config.get("llm", {})
+        model_name = llm_cfg.get("model", "gpt-4o-mini")
+        
+        # Use prompt selector to get model-appropriate system prompt
+        selected_system_prompt = select_system_prompt(self.config, model_name, system_prompt)
+        
         # Get UI locale for language adaptation
         ui_locale = self.config.get("ui", {}).get("default_language", "en")
         locale_map = {
@@ -95,7 +103,7 @@ class Summarizer:
         user_prompt = "\n".join(lines)
         
         # Add locale context to system prompt
-        system_with_locale = f"{system_prompt}\n\nUser interface locale: {locale_name}. Generate main analysis text in {locale_name}."
+        system_with_locale = f"{selected_system_prompt}\n\nUser interface locale: {locale_name}. Generate main analysis text in {locale_name}."
         
         full_prompt = f"{system_with_locale}\n\n{user_prompt}"
         return full_prompt
