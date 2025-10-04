@@ -24,13 +24,14 @@ class VTClient:
     Endpoints used:
       - /files/{hash}
       - /files/{hash}/behaviours
-      - /files/{hash}/attack_techniques
+      - /files/{hash}/behaviour_mitre_trees      (SUMMARY OF MITRE ATT&CK)
       - /files/{hash}/comments
       - /files/{hash}/crowdsourced_yara_rulesets
       - /files/{hash}/crowdsourced_sigma_rules
 
-    Backward-compatible aliases still available:
+    Backward-compatible aliases:
       - get_behaviour() -> get_behaviours()
+      - get_attack_techniques() -> get_behaviour_mitre_trees()   (deprecated)
       - get_yara_ruleset() -> get_crowdsourced_yara_rulesets()
       - get_sigma_rules() -> get_crowdsourced_sigma_rules()
 
@@ -38,8 +39,6 @@ class VTClient:
       {"ok": True, "status": 200, "data": <json dict>}
     Not found:
       {"ok": False, "status": 404, "error": "not_found"}
-
-    Raises VTAuthError for 401 / 403 (unless caller chooses to catch to degrade gracefully).
     """
 
     RATE_LIMIT_SLEEP_ON_429 = 15
@@ -75,7 +74,7 @@ class VTClient:
             "User-Agent": self.user_agent
         })
 
-    # ------------- Internal Utilities -------------
+    # ---------------- Internal ----------------
 
     def _rate_limit_sleep(self):
         elapsed = time.time() - self._last_request_ts
@@ -162,7 +161,7 @@ class VTClient:
             self.logger.error(f"[VT] Unexpected status {status}: {body_preview}")
             raise VTUnexpectedStatus(f"Unexpected status {status}: {body_preview}")
 
-    # ------------- Public API -------------
+    # ---------------- Public API ----------------
 
     def get_file_report(self, h: str) -> Dict[str, Any]:
         return self._request("GET", f"/files/{h}")
@@ -170,8 +169,12 @@ class VTClient:
     def get_behaviours(self, h: str) -> Dict[str, Any]:
         return self._request("GET", f"/files/{h}/behaviours")
 
-    def get_attack_techniques(self, h: str) -> Dict[str, Any]:
-        return self._request("GET", f"/files/{h}/attack_techniques")
+    def get_behaviour_mitre_trees(self, h: str) -> Dict[str, Any]:
+        """
+        Correct endpoint for MITRE ATT&CK summary:
+        /files/{hash}/behaviour_mitre_trees
+        """
+        return self._request("GET", f"/files/{h}/behaviour_mitre_trees")
 
     def get_comments(self, h: str, limit: int = 20) -> Dict[str, Any]:
         limit = max(1, min(limit, 40))
@@ -183,10 +186,16 @@ class VTClient:
     def get_crowdsourced_sigma_rules(self, h: str) -> Dict[str, Any]:
         return self._request("GET", f"/files/{h}/crowdsourced_sigma_rules")
 
-    # ------------- Backward-Compatible Aliases -------------
+    # ---------------- Backward-Compatible Aliases ----------------
 
     def get_behaviour(self, h: str) -> Dict[str, Any]:
         return self.get_behaviours(h)
+
+    # Deprecated alias: old code asked "attack_techniques"
+    def get_attack_techniques(self, h: str) -> Dict[str, Any]:
+        # Redirect to the correct endpoint
+        self.logger.debug("[VT] get_attack_techniques() called → redirecting to behaviour_mitre_trees")
+        return self.get_behaviour_mitre_trees(h)
 
     def get_yara_ruleset(self, h: str) -> Dict[str, Any]:
         return self.get_crowdsourced_yara_rulesets(h)
