@@ -16,6 +16,7 @@ from clients.llm_client import (
 )
 from core.aggregator import Aggregator
 from core.summarizer import Summarizer
+from core.ioc_extractor import IOCExtractor
 
 # Optional VT enrichment endpoints we query (all treated as non-fatal if forbidden):
 #   behaviour              -> sandbox behaviour reports
@@ -46,10 +47,16 @@ class JUMALApp:
         self.llm_client = None
         self.aggregator = Aggregator(self.logger)
         self.summarizer = Summarizer(self.logger)
+        self.ioc_extractor = IOCExtractor(self.logger)
         self._init_clients()
 
         self._progress_stage = tk.StringVar(value="Idle")
         self._status_message(self._t("status_idle"))
+        
+        # Store for report saving
+        self._last_aggregated = None
+        self._last_vt_data = None
+        self._last_ioc_summary = None
 
     # ------------- Internationalization -------------
     def _load_languages(self):
@@ -259,8 +266,17 @@ class JUMALApp:
             full = "".join(content_parts)
             parsed_json, free_text = self.summarizer.extract_json_and_text(full)
 
-            # Indicators tab build
-            self._build_indicators_tab(aggregated)
+            # Second LLM call for IOC extraction
+            self._append_summary(f"\n[*] {self._t('msg_ioc_extraction')}\n")
+            ioc_summary = self._extract_iocs(aggregated)
+            
+            # Store for report saving
+            self._last_aggregated = aggregated
+            self._last_vt_data = vt_data
+            self._last_ioc_summary = ioc_summary
+
+            # Indicators tab build with IOC extraction results
+            self._build_indicators_tab(ioc_summary)
 
             if parsed_json:
                 self._append_summary(f"\n\nJSON Parsed:\n{json.dumps(parsed_json, indent=2)}\n")
@@ -275,44 +291,116 @@ class JUMALApp:
         finally:
             self.progress.stop()
 
-    def _build_indicators_tab(self, aggregated: Dict[str, Any]):
+    def _build_indicators_tab(self, ioc_summary: Dict[str, Any]):
+        """
+        Build Indicators/Rules tab with structured IOC data from LLM extraction.
+        
+        Args:
+            ioc_summary: IOC summary dict or error dict
+        """
         lines = []
-        lines.append("Processes:")
-        for p in aggregated.get("processes", []):
-            lines.append(f"- {p}")
-        lines.append("\nNetwork:")
-        for n in aggregated.get("network", []):
-            lines.append(f"- {n}")
-        lines.append("\nYARA (from behaviour):")
-        yr = aggregated.get("yara_ruleset")
-        if not yr:
-            lines.append("(none)")
-        else:
-            # Display only rule names if structured list
-            if isinstance(yr, list):
-                for r in yr[:50]:
-                    if isinstance(r, dict):
-                        rn = r.get("rule_name") or r.get("rule") or r.get("name")
-                        lines.append(f"- {rn or str(r)[:80]}")
-                    else:
-                        lines.append(f"- {str(r)[:80]}")
+        lines.append("=" * 60)
+        lines.append("IOC EXTRACTION (AI-assisted from VirusTotal behavior data)")
+        lines.append("=" * 60)
+        lines.append("")
+        
+        # Check if there was an error
+        if "error" in ioc_summary:
+            lines.append("⚠ IOC extraction failed:")
+            lines.append(f"  {ioc_summary['error']}")
+            lines.append("")
+            lines.append("Fallback: Showing raw aggregated data")
+            lines.append("")
+            # Show basic fallback
+            if "fallback_data" in ioc_summary:
+                fallback = ioc_summary["fallback_data"]
+                lines.append("Processes:")
+                for p in fallback.get("processes", [])[:20]:
+                    lines.append(f"  - {p}")
+                lines.append("")
+                lines.append("Network:")
+                for n in fallback.get("network", [])[:20]:
+                    lines.append(f"  - {n}")
+            self.text_indicators.insert(tk.END, "\n".join(lines))
+            return
+        
+        # Structured sections
+        sections = [
+            ("PROCESS NAMES", "process_names"),
+            ("NETWORK - IP ADDRESSES", "network_ips"),
+            ("NETWORK - DOMAINS", "network_domains"),
+            ("URLs", "urls"),
+            ("FILE PATHS", "file_paths"),
+            ("REGISTRY KEYS", "registry_keys"),
+            ("MUTEXES", "mutexes"),
+            ("YARA RULES", "yara_rules"),
+            ("SIGMA RULES", "sigma_rules"),
+            ("OTHER IOCs", "other_iocs"),
+        ]
+        
+        for section_title, key in sections:
+            lines.append(f"{section_title}:")
+            items = ioc_summary.get(key, [])
+            if not items:
+                lines.append("  (none)")
             else:
-                lines.append(str(yr)[:500])
-        lines.append("\nSIGMA (from behaviour):")
-        sr = aggregated.get("sigma_rules")
-        if not sr:
-            lines.append("(none)")
-        else:
-            if isinstance(sr, list):
-                for r in sr[:50]:
-                    if isinstance(r, dict):
-                        rn = r.get("rule_name") or r.get("title") or r.get("name")
-                        lines.append(f"- {rn or str(r)[:80]}")
-                    else:
-                        lines.append(f"- {str(r)[:80]}")
-            else:
-                lines.append(str(sr)[:500])
+                for item in items[:100]:  # Max 100 per section
+                    lines.append(f"  - {item}")
+            lines.append("")
+        
         self.text_indicators.insert(tk.END, "\n".join(lines))
+    
+    def _extract_iocs(self, aggregated: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Perform second LLM call to extract IOCs.
+        
+        Args:
+            aggregated: Aggregated VT data
+            
+        Returns:
+            IOC summary dict or error dict with fallback
+        """
+        try:
+            # Build IOC extraction prompt
+            ioc_prompt = self.ioc_extractor.build_ioc_prompt(aggregated)
+            
+            # Get IOC model from config (fallback to main model)
+            llm_cfg = self.config.get("llm", {})
+            ioc_model = llm_cfg.get("ioc_model") or llm_cfg.get("model", "gpt-4o-mini")
+            
+            # Non-streaming call for structured extraction
+            self.logger.info(f"Calling LLM for IOC extraction with model: {ioc_model}")
+            ioc_response = self.llm_client.complete_once(
+                prompt=ioc_prompt,
+                model=ioc_model,
+                temperature=0.0
+            )
+            
+            # Parse IOC JSON
+            ioc_summary, error_msg = self.ioc_extractor.parse_ioc_json(ioc_response)
+            
+            if ioc_summary:
+                self.logger.info("IOC extraction successful")
+                return ioc_summary
+            else:
+                self.logger.warning(f"IOC parsing failed: {error_msg}")
+                return {
+                    "error": error_msg,
+                    "fallback_data": aggregated
+                }
+        
+        except (LLMAuthError, LLMBadRequestError, LLMServerError, LLMClientError) as e:
+            self.logger.error(f"LLM IOC extraction failed: {e}")
+            return {
+                "error": f"LLM error: {str(e)}",
+                "fallback_data": aggregated
+            }
+        except Exception as e:
+            self.logger.exception("Unexpected error during IOC extraction")
+            return {
+                "error": f"Unexpected error: {str(e)}",
+                "fallback_data": aggregated
+            }
 
     def _append_summary(self, text: str):
         self.text_summary.insert(tk.END, text)
@@ -331,10 +419,15 @@ class JUMALApp:
     def _on_save_report(self):
         content_summary = self.text_summary.get("1.0", tk.END).strip()
         raw_json_text = self.text_raw.get("1.0", tk.END).strip()
-        try:
-            vt_data = json.loads(raw_json_text) if raw_json_text else {}
-        except Exception:
-            vt_data = {}
+        
+        # Use stored data if available
+        if self._last_vt_data:
+            vt_data = self._last_vt_data
+        else:
+            try:
+                vt_data = json.loads(raw_json_text) if raw_json_text else {}
+            except Exception:
+                vt_data = {}
 
         # Attempt JSON extraction again for saving
         parsed_json = None
@@ -364,9 +457,11 @@ class JUMALApp:
                 **(parsed_json or {}),
                 "free_text": free_text
             },
+            "ioc_summary": self._last_ioc_summary or {"error": "IOC extraction not performed or failed"},
             "meta": {
                 "generator": "JUMAL 0.1",
                 "llm_model": self.config.get("llm", {}).get("model"),
+                "ioc_model": self.config.get("llm", {}).get("ioc_model"),
                 "vt_base_url": self.config.get("virustotal", {}).get("base_url")
             }
         }

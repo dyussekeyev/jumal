@@ -24,6 +24,7 @@
   "msg_fetch_yara": "YARA ережелерін алу...",
   "msg_fetch_sigma": "Sigma ережелерін алу...",
   "msg_llm_start": "LLM талдауы (ағын)...",
+  "msg_ioc_extraction": "IOC шығару (екінші LLM қоңырауы)...",
   "msg_not_found": "Файл VirusTotal жүйесінде табылмады.",
   "msg_json_parse_fail": "JSON талдау сәтсіз.",
   "msg_copied": "Қорытынды көшірілді."

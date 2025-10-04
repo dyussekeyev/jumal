@@ -24,6 +24,7 @@
   "msg_fetch_yara": "Запрос YARA правил...",
   "msg_fetch_sigma": "Запрос Sigma правил...",
   "msg_llm_start": "Анализ LLM (поток)...",
+  "msg_ioc_extraction": "Извлечение индикаторов (второй вызов LLM)...",
   "msg_not_found": "Файл не найден на VirusTotal.",
   "msg_json_parse_fail": "Не удалось разобрать JSON.",
   "msg_copied": "Резюме скопировано."
