@@ -4,7 +4,8 @@ import logging
 
 def test_prompt_basic():
     logger = logging.getLogger("test")
-    summ = Summarizer(logger)
+    config = {"ui": {"default_language": "en"}}
+    summ = Summarizer(logger, config)
     agg_struct = {
         "basic": {
             "detections": 5,
