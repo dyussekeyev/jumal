@@ -80,7 +80,7 @@ def test_ioc_json_parsing_malformed():
     parsed, error = extractor.parse_ioc_json(malformed)
     
     assert parsed is None
-    assert "No JSON block found" in error
+    assert "No valid JSON block found" in error
 
 
 def test_ioc_json_parsing_missing_keys():

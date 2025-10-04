@@ -67,7 +67,9 @@ class LLMClient:
         self,
         prompt: str,
         model: Optional[str] = None,
-        temperature: float = 0.0
+        temperature: float = 0.0,
+        timeout: Optional[int] = None,
+        json_mode: bool = False
     ) -> str:
         """
         Non-streaming completion for structured extraction.
@@ -76,6 +78,8 @@ class LLMClient:
             prompt: The prompt to send
             model: Optional model override (default: use self.model)
             temperature: Temperature setting (default: 0.0 for deterministic)
+            timeout: Optional timeout override (default: use self.timeout)
+            json_mode: If True and provider is OpenAI-compatible, includes response_format={"type":"json_object"}
             
         Returns:
             Full completion text
@@ -84,11 +88,12 @@ class LLMClient:
             LLMAuthError, LLMBadRequestError, LLMServerError, LLMClientError
         """
         use_model = model or self.model
+        use_timeout = timeout or self.timeout
         
         if self._is_ollama:
-            return self._complete_once_ollama(prompt, use_model, temperature)
+            return self._complete_once_ollama(prompt, use_model, temperature, use_timeout)
         else:
-            return self._complete_once_openai(prompt, use_model, temperature)
+            return self._complete_once_openai(prompt, use_model, temperature, use_timeout, json_mode)
 
     # ---------- OpenAI style ----------
 
@@ -190,7 +195,9 @@ class LLMClient:
         self,
         prompt: str,
         model: str,
-        temperature: float
+        temperature: float,
+        timeout: int,
+        json_mode: bool = False
     ) -> str:
         """Non-streaming OpenAI-compatible completion."""
         url = f"{self.base_url}/chat/completions"
@@ -205,7 +212,11 @@ class LLMClient:
             "stream": False
         }
         
-        r = requests.post(url, headers=headers, json=payload, timeout=self.timeout)
+        # Add json_mode if requested (OpenAI-compatible providers)
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+        
+        r = requests.post(url, headers=headers, json=payload, timeout=timeout)
         if r.status_code != 200:
             self._raise_http_error(r)
         
@@ -217,7 +228,8 @@ class LLMClient:
         self,
         prompt: str,
         model: str,
-        temperature: float
+        temperature: float,
+        timeout: int
     ) -> str:
         """Non-streaming Ollama completion."""
         url = f"{self.base_url}/api/chat"
@@ -231,7 +243,7 @@ class LLMClient:
             }
         }
         
-        r = requests.post(url, headers=headers, json=payload, timeout=self.timeout)
+        r = requests.post(url, headers=headers, json=payload, timeout=timeout)
         if r.status_code != 200:
             self._raise_http_error(r)
         

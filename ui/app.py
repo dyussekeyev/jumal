@@ -47,7 +47,7 @@ class JUMALApp:
         self.llm_client = None
         self.aggregator = Aggregator(self.logger)
         self.summarizer = Summarizer(self.logger)
-        self.ioc_extractor = IOCExtractor(self.logger)
+        self.ioc_extractor = IOCExtractor(self.logger, self.config)
         self._init_clients()
 
         self._progress_stage = tk.StringVar(value="Idle")
@@ -57,6 +57,7 @@ class JUMALApp:
         self._last_aggregated = None
         self._last_vt_data = None
         self._last_ioc_summary = None
+        self._last_ioc_result = None
 
     # ------------- Internationalization -------------
     def _load_languages(self):
@@ -358,43 +359,31 @@ class JUMALApp:
             aggregated: Aggregated VT data
             
         Returns:
-            IOC summary dict or error dict with fallback
+            IOC summary dict (for UI) or error dict with fallback
         """
         try:
-            # Build IOC extraction prompt
-            ioc_prompt = self.ioc_extractor.build_ioc_prompt(aggregated)
+            # Use the new run() method which handles retry logic
+            self.logger.info("Starting IOC extraction with orchestrated run")
+            result = self.ioc_extractor.run(self.llm_client, aggregated)
             
-            # Get IOC model from config (fallback to main model)
-            llm_cfg = self.config.get("llm", {})
-            ioc_model = llm_cfg.get("ioc_model") or llm_cfg.get("model", "gpt-4o-mini")
+            # Store full result for report saving
+            self._last_ioc_result = result
             
-            # Non-streaming call for structured extraction
-            self.logger.info(f"Calling LLM for IOC extraction with model: {ioc_model}")
-            ioc_response = self.llm_client.complete_once(
-                prompt=ioc_prompt,
-                model=ioc_model,
-                temperature=0.0
-            )
-            
-            # Parse IOC JSON
-            ioc_summary, error_msg = self.ioc_extractor.parse_ioc_json(ioc_response)
-            
-            if ioc_summary:
-                self.logger.info("IOC extraction successful")
-                return ioc_summary
+            # Check if extraction was successful
+            if "iocs" in result:
+                self.logger.info(f"IOC extraction successful after {result.get('attempts', 1)} attempt(s)")
+                # Return the IOCs directly for the UI
+                return result["iocs"]
             else:
-                self.logger.warning(f"IOC parsing failed: {error_msg}")
+                # Extraction failed
+                error_msg = result.get("error", "Unknown error")
+                self.logger.warning(f"IOC extraction failed: {error_msg}")
                 return {
                     "error": error_msg,
-                    "fallback_data": aggregated
+                    "fallback_data": aggregated,
+                    "raw_response": result.get("raw_response", "")
                 }
         
-        except (LLMAuthError, LLMBadRequestError, LLMServerError, LLMClientError) as e:
-            self.logger.error(f"LLM IOC extraction failed: {e}")
-            return {
-                "error": f"LLM error: {str(e)}",
-                "fallback_data": aggregated
-            }
         except Exception as e:
             self.logger.exception("Unexpected error during IOC extraction")
             return {
@@ -457,7 +446,7 @@ class JUMALApp:
                 **(parsed_json or {}),
                 "free_text": free_text
             },
-            "ioc_summary": self._last_ioc_summary or {"error": "IOC extraction not performed or failed"},
+            "ioc_summary": self._last_ioc_result or {"error": "IOC extraction not performed or failed"},
             "meta": {
                 "generator": "JUMAL 0.1",
                 "llm_model": self.config.get("llm", {}).get("model"),
