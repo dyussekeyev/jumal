@@ -535,15 +535,14 @@ class JUMALApp:
             except Exception:
                 vt_data = {}
 
-        # Attempt JSON extraction again for saving
+        # Use Summarizer's improved JSON extraction method
         parsed_json = None
         free_text = content_summary
-        import re, json as _json
-        m = re.search(r"\{.*?\}", content_summary, re.DOTALL)
-        if m:
+        json_candidate = self.summarizer.extract_first_json_block(content_summary)
+        if json_candidate:
             try:
-                parsed_json = _json.loads(m.group(0))
-                free_text = content_summary.replace(m.group(0), "").strip()
+                parsed_json = json.loads(json_candidate)
+                free_text = content_summary.replace(json_candidate, "", 1).strip()
             except Exception:
                 pass
 

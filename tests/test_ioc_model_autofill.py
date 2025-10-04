@@ -156,7 +156,7 @@ def test_ioc_model_autofill_saved_to_file():
         manager.load()
         
         # Read the file directly to verify it was saved
-        with open(config_path, 'r') as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             saved_config = json.load(f)
         
         assert saved_config["llm"]["ioc_model"] == "test-model"
