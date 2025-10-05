@@ -9,6 +9,7 @@ class IOCExtractor:
     No JSON parsing, retry logic, or normalization required.
     
     Raw mode produces markdown with sections like:
+    - File Names
     - Processes
     - Network IPs
     - Network Domains
@@ -32,7 +33,18 @@ Focus on factual indicators only - no speculation or analysis."""
 
 Please organize the IOCs into the following sections using markdown headings (##). Include a brief introductory sentence, then list indicators using bullet points (-). If a section has no indicators, write "(none found)".
 
+IMPORTANT GUIDELINES:
+- List only indicators actually observed in the provided data - do not guess or extrapolate
+- Deduplicate indicators within each section (case-insensitive comparison)
+- Preserve the original casing of indicators in output
+- File Names: Just the filename (e.g., "malware.exe"), not the full path
+- File Paths: Complete paths (e.g., "C:\\Windows\\Temp\\malware.exe")
+- IP Addresses: Only numeric IP addresses (IPv4/IPv6)
+- Domains: Only domain names, not IPs
+- URLs: Complete HTTP/HTTPS URLs
+
 Required sections:
+- ## File Names
 - ## Processes
 - ## Network IPs
 - ## Network Domains
@@ -84,6 +96,14 @@ Keep the format clean and easy to copy. List each unique indicator once."""
                 lines.append(f"- {t}")
             lines.append("")
         
+        # File names (new)
+        file_names = aggregated.get("file_names", [])
+        if file_names:
+            lines.append(f"FILE NAMES ({len(file_names)} total, showing first 30):")
+            for fname in file_names[:30]:
+                lines.append(f"- {fname}")
+            lines.append("")
+        
         # Processes (truncate to save tokens)
         processes = aggregated.get("processes", [])
         if processes:
@@ -92,12 +112,60 @@ Keep the format clean and easy to copy. List each unique indicator once."""
                 lines.append(f"- {p}")
             lines.append("")
         
-        # Network indicators (truncate)
+        # File paths (new)
+        file_paths = aggregated.get("file_paths", [])
+        if file_paths:
+            lines.append(f"FILE PATHS ({len(file_paths)} total, showing first 30):")
+            for path in file_paths[:30]:
+                lines.append(f"- {path}")
+            lines.append("")
+        
+        # IP addresses (new - separated from domains)
+        ip_addresses = aggregated.get("ip_addresses", [])
+        if ip_addresses:
+            lines.append(f"IP ADDRESSES ({len(ip_addresses)} total, showing first 30):")
+            for ip in ip_addresses[:30]:
+                lines.append(f"- {ip}")
+            lines.append("")
+        
+        # Domains (new - separated from IPs)
+        domains = aggregated.get("domains", [])
+        if domains:
+            lines.append(f"DOMAINS ({len(domains)} total, showing first 30):")
+            for domain in domains[:30]:
+                lines.append(f"- {domain}")
+            lines.append("")
+        
+        # URLs (new)
+        urls = aggregated.get("urls", [])
+        if urls:
+            lines.append(f"URLS ({len(urls)} total, showing first 30):")
+            for url in urls[:30]:
+                lines.append(f"- {url}")
+            lines.append("")
+        
+        # Network indicators (legacy - kept for backward compatibility)
         network = aggregated.get("network", [])
         if network:
             lines.append(f"NETWORK INDICATORS ({len(network)} total, showing first 30):")
             for n in network[:30]:
                 lines.append(f"- {n}")
+            lines.append("")
+        
+        # Registry keys (new)
+        registry_keys = aggregated.get("registry_keys", [])
+        if registry_keys:
+            lines.append(f"REGISTRY KEYS ({len(registry_keys)} total, showing first 30):")
+            for key in registry_keys[:30]:
+                lines.append(f"- {key}")
+            lines.append("")
+        
+        # Mutexes (new)
+        mutexes = aggregated.get("mutexes", [])
+        if mutexes:
+            lines.append(f"MUTEXES ({len(mutexes)} total, showing first 30):")
+            for mutex in mutexes[:30]:
+                lines.append(f"- {mutex}")
             lines.append("")
         
         # Comments may contain IOCs
