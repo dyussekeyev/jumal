@@ -3,16 +3,16 @@ import json
 from typing import Generator, Optional
 
 class LLMClientError(Exception):
-    """Generic LLM client error."""
+    """Generic LLM client error including network/connection issues."""
 
 class LLMAuthError(LLMClientError):
-    """Authentication / authorization error (401/403)."""
+    """Authentication or authorization error (401/403)."""
 
 class LLMBadRequestError(LLMClientError):
-    """Invalid request parameters / model not found (400 / 404)."""
+    """Invalid request parameters or model not found (400/404)."""
 
 class LLMServerError(LLMClientError):
-    """Server side / transient errors (5xx)."""
+    """Server-side or transient errors (5xx)."""
 
 class LLMClient:
     """
@@ -55,8 +55,19 @@ class LLMClient:
 
     def stream_chat(self, prompt: str) -> Generator[str, None, None]:
         """
-        Streams model output. Raises:
-          LLMAuthError, LLMBadRequestError, LLMServerError, LLMClientError
+        Stream model output incrementally.
+        
+        Args:
+            prompt: The user prompt to send to the model
+            
+        Yields:
+            Incremental text chunks from the model response
+            
+        Raises:
+            LLMAuthError: Authentication/authorization failure
+            LLMBadRequestError: Invalid request or model not found
+            LLMServerError: Server-side error
+            LLMClientError: Network/connection errors or other client issues
         """
         if self._is_ollama:
             yield from self._stream_ollama(prompt)
@@ -133,6 +144,8 @@ class LLMClient:
                                     yield content
             except (requests.exceptions.ChunkedEncodingError, ConnectionResetError, 
                     requests.exceptions.ConnectionError) as e:
+                # Connection was lost during streaming - this can happen if the remote host
+                # closes the connection unexpectedly or network issues occur
                 self.logger.error(f"[LLM] Connection error during streaming: {e}")
                 raise LLMClientError(f"Connection lost during streaming: {e}") from e
         else:
@@ -181,6 +194,8 @@ class LLMClient:
                         break
         except (requests.exceptions.ChunkedEncodingError, ConnectionResetError, 
                 requests.exceptions.ConnectionError) as e:
+            # Connection was lost during streaming - this can happen if the remote host
+            # closes the connection unexpectedly or network issues occur
             self.logger.error(f"[LLM] Connection error during streaming: {e}")
             raise LLMClientError(f"Connection lost during streaming: {e}") from e
 
