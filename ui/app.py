@@ -338,7 +338,6 @@ class JUMALApp:
                     self.text_summary.see(tk.END)
                     # slight pause for UI responsiveness
                     time.sleep(0.005)
-                self.text_summary.config(state=tk.DISABLED)  # Disable after streaming
             except LLMAuthError as e:
                 self.logger.error("LLM auth error")
                 self._append_summary(f"\n[!] LLM auth error: {e}\n")
@@ -346,11 +345,13 @@ class JUMALApp:
                 self.progress.stop()
                 return
             except (LLMBadRequestError, LLMServerError, LLMClientError) as e:
-                self.logger.error("LLM request error")
+                self.logger.error(f"LLM request error: {e}")
                 self._append_summary(f"\n[!] LLM request failed: {e}\n")
                 self._status_message(self._t("status_error"))
                 self.progress.stop()
                 return
+            finally:
+                self.text_summary.config(state=tk.DISABLED)  # Always disable after streaming
 
             full = "".join(content_parts)
             parsed_json, free_text = self.summarizer.extract_json_and_text(full)

@@ -111,25 +111,30 @@ class LLMClient:
         }
 
         if self.stream_enabled:
-            with requests.post(url, headers=headers, json=payload, stream=True, timeout=self.timeout) as r:
-                if r.status_code != 200:
-                    self._raise_http_error(r)
-                for line in r.iter_lines(decode_unicode=True):
-                    if not line:
-                        continue
-                    if line.startswith("data: "):
-                        data = line[6:].strip()
-                        if data == "[DONE]":
-                            break
-                        try:
-                            obj = json.loads(data)
-                        except Exception:
+            try:
+                with requests.post(url, headers=headers, json=payload, stream=True, timeout=self.timeout) as r:
+                    if r.status_code != 200:
+                        self._raise_http_error(r)
+                    for line in r.iter_lines(decode_unicode=True):
+                        if not line:
                             continue
-                        for c in obj.get("choices", []):
-                            delta = c.get("delta", {})
-                            content = delta.get("content")
-                            if content:
-                                yield content
+                        if line.startswith("data: "):
+                            data = line[6:].strip()
+                            if data == "[DONE]":
+                                break
+                            try:
+                                obj = json.loads(data)
+                            except Exception:
+                                continue
+                            for c in obj.get("choices", []):
+                                delta = c.get("delta", {})
+                                content = delta.get("content")
+                                if content:
+                                    yield content
+            except (requests.exceptions.ChunkedEncodingError, ConnectionResetError, 
+                    requests.exceptions.ConnectionError) as e:
+                self.logger.error(f"[LLM] Connection error during streaming: {e}")
+                raise LLMClientError(f"Connection lost during streaming: {e}") from e
         else:
             r = requests.post(url, headers=headers, json=payload, timeout=self.timeout)
             if r.status_code != 200:
@@ -150,29 +155,34 @@ class LLMClient:
             "stream": self.stream_enabled
         }
 
-        with requests.post(url, headers=headers, json=payload, stream=True, timeout=self.timeout) as r:
-            if r.status_code != 200:
-                self._raise_http_error(r)
-            if not self.stream_enabled:
-                data = r.json()
-                msg = data.get("message", {})
-                content = msg.get("content", "")
-                if content:
-                    yield content
-                return
-            for line in r.iter_lines(decode_unicode=True):
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except Exception:
-                    continue
-                msg = obj.get("message") or {}
-                content = msg.get("content")
-                if content:
-                    yield content
-                if obj.get("done"):
-                    break
+        try:
+            with requests.post(url, headers=headers, json=payload, stream=True, timeout=self.timeout) as r:
+                if r.status_code != 200:
+                    self._raise_http_error(r)
+                if not self.stream_enabled:
+                    data = r.json()
+                    msg = data.get("message", {})
+                    content = msg.get("content", "")
+                    if content:
+                        yield content
+                    return
+                for line in r.iter_lines(decode_unicode=True):
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except Exception:
+                        continue
+                    msg = obj.get("message") or {}
+                    content = msg.get("content")
+                    if content:
+                        yield content
+                    if obj.get("done"):
+                        break
+        except (requests.exceptions.ChunkedEncodingError, ConnectionResetError, 
+                requests.exceptions.ConnectionError) as e:
+            self.logger.error(f"[LLM] Connection error during streaming: {e}")
+            raise LLMClientError(f"Connection lost during streaming: {e}") from e
 
     # ---------- Error handling ----------
 
