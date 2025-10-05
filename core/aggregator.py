@@ -220,9 +220,27 @@ class Aggregator:
         
         if isinstance(behaviours_node, dict):
             data_section = behaviours_node.get("data") or behaviours_node
-            if isinstance(data_section, dict):
+            
+            # Handle case where data is a list of sandbox reports
+            sandbox_reports = []
+            if isinstance(data_section, list):
+                sandbox_reports = data_section
+            elif isinstance(data_section, dict):
+                # Single sandbox report or dict format
+                sandbox_reports = [data_section]
+            
+            # Process each sandbox report
+            for sandbox_data in sandbox_reports[:5]:  # Limit to first 5 sandboxes
+                if not isinstance(sandbox_data, dict):
+                    continue
+                
+                # Get attributes if this is a VT API response format
+                attrs = sandbox_data.get("attributes") or sandbox_data
+                if not isinstance(attrs, dict):
+                    continue
+                
                 # Extract processes and command lines
-                procs = data_section.get("processes") or []
+                procs = attrs.get("processes") or []
                 for p in procs[:25]:
                     if isinstance(p, dict):
                         # Prefer command_line over name for better context
@@ -231,18 +249,30 @@ class Aggregator:
                             processes.append(pname[:120])
                             # Extract file paths from command lines
                             all_file_paths.extend(self._extract_file_paths(pname))
+                
+                # Also check processes_created (alternative field name)
+                procs_created = attrs.get("processes_created") or []
+                for pc in procs_created[:25]:
+                    if isinstance(pc, str):
+                        processes.append(pc[:120])
+                        all_file_paths.extend(self._extract_file_paths(pc))
+                    elif isinstance(pc, dict):
+                        pname = pc.get("command_line") or pc.get("name")
+                        if pname:
+                            processes.append(pname[:120])
+                            all_file_paths.extend(self._extract_file_paths(pname))
 
                 # Extract mutexes
-                mutexes = data_section.get("mutexes_created") or []
+                mutexes = attrs.get("mutexes_created") or []
                 if isinstance(mutexes, list):
                     all_mutexes.extend(mutexes[:40])
 
                 # Extract registry keys
-                reg_keys_opened = data_section.get("registry_keys_opened") or []
+                reg_keys_opened = attrs.get("registry_keys_opened") or []
                 if isinstance(reg_keys_opened, list):
                     all_registry_keys.extend(reg_keys_opened[:40])
                 
-                reg_keys_set = data_section.get("registry_keys_set") or []
+                reg_keys_set = attrs.get("registry_keys_set") or []
                 if isinstance(reg_keys_set, list):
                     for reg_item in reg_keys_set[:40]:
                         if isinstance(reg_item, dict):
@@ -253,7 +283,7 @@ class Aggregator:
                             all_registry_keys.append(reg_item)
 
                 # Extract network indicators
-                nets = data_section.get("network") or {}
+                nets = attrs.get("network") or {}
                 if isinstance(nets, dict):
                     hosts = nets.get("hosts") or []
                     for h in hosts[:25]:

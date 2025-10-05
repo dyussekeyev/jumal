@@ -400,6 +400,50 @@ def test_aggregator_extended_iocs():
     print(f"  - {len(result['urls'])} URLs")
 
 
+def test_aggregator_truncation_cap():
+    """Test that aggregator caps IOC categories at specified limit."""
+    from core.aggregator import Aggregator
+    logger = logging.getLogger("test")
+    aggregator = Aggregator(logger)
+    
+    # Create data with > 40 file paths
+    many_paths = [f"C:\\Path\\To\\File{i}.exe" for i in range(100)]
+    many_reg_keys = [f"HKLM\\Software\\Key{i}" for i in range(100)]
+    
+    vt_data = {
+        "file_report": {
+            "ok": True,
+            "data": {
+                "data": {
+                    "attributes": {
+                        "last_analysis_stats": {"malicious": 1},
+                        "names": ["test.exe"]
+                    }
+                }
+            }
+        },
+        "behaviour": {
+            "ok": True,
+            "data": {
+                "registry_keys_opened": many_reg_keys,
+                "processes_created": many_paths
+            }
+        }
+    }
+    
+    result = aggregator.build_struct(vt_data)
+    
+    # Verify capping (CAP = 40)
+    assert len(result["file_paths"]) <= 40, f"file_paths not capped: {len(result['file_paths'])}"
+    assert len(result["registry_keys"]) <= 40, f"registry_keys not capped: {len(result['registry_keys'])}"
+    assert len(result["file_names"]) <= 40, f"file_names not capped: {len(result['file_names'])}"
+    
+    print(f"✓ test_aggregator_truncation_cap - Categories properly capped:")
+    print(f"  - file_paths: {len(result['file_paths'])} (max 40)")
+    print(f"  - registry_keys: {len(result['registry_keys'])} (max 40)")
+    print(f"  - file_names: {len(result['file_names'])} (max 40)")
+
+
 if __name__ == "__main__":
     test_raw_mode_success()
     test_raw_mode_default()
@@ -409,6 +453,8 @@ if __name__ == "__main__":
     test_raw_mode_llm_failure()
     test_section_headings_in_output()
     test_aggregator_extended_iocs()
+    test_aggregator_truncation_cap()
     
     print("\nAll IOC raw mode tests passed! ✅")
+
 

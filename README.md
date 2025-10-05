@@ -29,9 +29,14 @@ It queries VirusTotal for static, behavioral, MITRE ATT&CK, comments, and crowds
   - `raw_summary`: short technical paragraph
 - Extracted IOC output (second LLM):
   - Markdown-formatted sections with indicators organized by type
-  - Sections: Processes, Network IPs, Network Domains, URLs, File Paths, Registry Keys, Mutexes, YARA Rules, Sigma Rules, Other IOCs
+  - Sections: **File Names**, Processes, Network IPs, Network Domains, URLs, File Paths, Registry Keys, Mutexes, YARA Rules, Sigma Rules, Other IOCs
   - Human-readable format for easy copying and analysis
   - Adapts to UI language (English, Russian, Kazakh)
+  - **Enhanced extraction**: Automatically harvests IOCs from Sigma rule match contexts, process command lines, registry operations, and network artifacts
+  - **Separate categories**: IPs, Domains, and URLs are now extracted and listed separately for better organization
+  - **File names vs paths**: Distinguishes between filenames (e.g., "malware.exe") and full paths (e.g., "C:\\Windows\\Temp\\malware.exe")
+  - **Registry keys**: Extracts registry keys from sandbox data and Sigma contexts
+  - **Mutexes**: Identifies mutex creation artifacts when present in behavior data
 - GUI (tkinter) with tabs:
   - Summary (verdict & analysis) - readonly with copy button
   - Indicators / Rules (AI-extracted IOCs, YARA, Sigma) - readonly with copy button
@@ -127,7 +132,26 @@ JUMAL uses a **dual LLM approach** for comprehensive malware analysis:
 
 IOC extraction uses **raw markdown mode**, which delegates all formatting to the LLM without local JSON parsing.
 
-- **Raw markdown output**: LLM produces human-readable sections (Processes, Network IPs, Domains, URLs, File Paths, Registry Keys, Mutexes, YARA Rules, Sigma Rules, Other IOCs).
+- **Raw markdown output**: LLM produces human-readable sections with enhanced IOC categories:
+  - **File Names**: Distinct filenames extracted from VT attributes and file paths
+  - **Processes**: Process names and command lines
+  - **Network IPs**: IPv4/IPv6 addresses (separated from domains)
+  - **Network Domains**: Domain names only (excluding IPs)
+  - **URLs**: Full HTTP/HTTPS URLs
+  - **File Paths**: Complete Windows paths (drive and UNC paths)
+  - **Registry Keys**: Windows registry keys from sandbox and Sigma data
+  - **Mutexes**: Mutex creation artifacts
+  - **YARA Rules**: Detected YARA signatures
+  - **Sigma Rules**: Matched Sigma detection rules
+  - **Other IOCs**: Hashes, PDB paths, imphashes, and other uncategorized indicators
+- **Intelligent extraction**: Automatically harvests IOCs from:
+  - Process command lines and file paths
+  - Sigma rule match contexts (Image, CommandLine, TargetFilename, etc.)
+  - Registry operations (keys opened/set)
+  - Network artifacts (hosts, DNS requests, HTTP conversations)
+  - Mutex creation events
+- **Deduplication**: Case-insensitive deduplication within each category (preserves original casing)
+- **Capped output**: Each category limited to 40 items to maintain prompt efficiency
 - **No parsing/validation**: Output is displayed verbatim in the Indicators/Rules tab with a copy button.
 - **Single-pass extraction**: No retry logic, simpler error handling.
 - **Configurable prompts**: Customize via `llm.ioc_raw_system_prompt` and `llm.ioc_raw_user_template` in config.
@@ -139,6 +163,7 @@ IOC extraction uses **raw markdown mode**, which delegates all formatting to the
 - Provides better UX with readable markdown output.
 - Simplifies codebase by removing complex parsing/retry/normalization logic.
 - Gives LLM full control over formatting, making it more flexible and reliable.
+- **Richer IOC coverage**: Extracts more indicators from deeper analysis of VT data structures.
 
 ---
 
@@ -355,7 +380,7 @@ To add a new language:
 ## Limitations (MVP)
 
 - No pagination beyond initial comments limit.
-- Simplistic behavior extraction (process/network) — does not deeply parse all sandbox artifacts.
+- Behavior extraction covers common IOC categories but may not parse all specialized sandbox artifacts.
 - No caching layer (every request hits the API).
 - No CLI mode (GUI only).
 - JSON parsing of LLM response is heuristic (first `{ ... }` block).
