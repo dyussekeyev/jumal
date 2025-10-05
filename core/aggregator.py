@@ -36,7 +36,7 @@ class Aggregator:
                     out.append(label)
         return out
 
-    def _extract_yara_sigma(self, behaviours_node) -> (Any, Any):
+    def _extract_yara_sigma(self, behaviours_node) -> tuple[Any, Any]:
         """
         Возвращает (yara_results, sigma_results).
         Формат VT может быть:

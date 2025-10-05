@@ -1,8 +1,5 @@
 import json
-import re
 from typing import Dict, Any, Optional
-
-JSON_BLOCK_RE = re.compile(r"\{.*?\}", re.DOTALL)
 
 class Summarizer:
     def __init__(self, logger, config: Optional[Dict[str, Any]] = None):
@@ -20,15 +17,33 @@ class Summarizer:
         """
         Extract the first JSON block from text.
         
+        Uses brace counting to handle nested objects correctly.
+        
         Args:
             text: Text potentially containing JSON
             
         Returns:
             JSON string or None
         """
-        match = JSON_BLOCK_RE.search(text)
-        if match:
-            return match.group(0)
+        # Find first opening brace
+        start = text.find('{')
+        if start == -1:
+            return None
+        
+        # Count braces to find matching closing brace
+        brace_count = 0
+        i = start
+        while i < len(text):
+            if text[i] == '{':
+                brace_count += 1
+            elif text[i] == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    # Found matching closing brace
+                    return text[start:i+1]
+            i += 1
+        
+        # No matching closing brace found
         return None
 
     def build_prompt(self, system_prompt: str, aggregated: Dict[str, Any]) -> str:
