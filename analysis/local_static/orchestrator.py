@@ -158,6 +158,7 @@ class FileAnalysisOrchestrator:
             self.logger.exception("Hash computation failed")
             return result
 
+        result.hashes = hashes
         sha256 = hashes["sha256"]
 
         # --- Step 2: VT lookup (hash-only) ---

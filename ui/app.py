@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext, filedialog
+import dataclasses
 import threading
 import time
 import json
@@ -132,24 +133,26 @@ class JUMALApp:
         # Indicators tab
         indicators_top = ttk.Frame(self.frame_indicators)
         indicators_top.pack(fill=tk.X, pady=5, padx=5)
-        ttk.Button(indicators_top, text=self._t("btn_copy_indicators"),
-                   command=self._on_copy_indicators).pack(side=tk.LEFT)
+        ttk.Button(indicators_top, text=self._t("btn_save_indicators"),
+                   command=self._on_save_indicators).pack(side=tk.LEFT)
 
         self.text_indicators = scrolledtext.ScrolledText(
             self.frame_indicators, wrap=tk.WORD, state=tk.DISABLED
         )
         self.text_indicators.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self._attach_text_context_menu(self.text_indicators)
 
         # Raw tab
         raw_top = ttk.Frame(self.frame_raw)
         raw_top.pack(fill=tk.X, pady=5, padx=5)
-        ttk.Button(raw_top, text=self._t("btn_copy_raw"),
-                   command=self._on_copy_raw).pack(side=tk.LEFT)
+        ttk.Button(raw_top, text=self._t("btn_save_raw"),
+                   command=self._on_save_raw).pack(side=tk.LEFT)
 
         self.text_raw = scrolledtext.ScrolledText(
             self.frame_raw, wrap=tk.WORD, state=tk.DISABLED
         )
         self.text_raw.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self._attach_text_context_menu(self.text_raw)
 
         # Status bar
         status_frame = ttk.Frame(self.root)
@@ -167,6 +170,7 @@ class JUMALApp:
         ttk.Label(top_frame, text=self._t("label_hash")).pack(side=tk.LEFT)
         self.entry_hash = ttk.Entry(top_frame, width=60)
         self.entry_hash.pack(side=tk.LEFT, padx=5)
+        self._attach_entry_context_menu(self.entry_hash)
 
         # Hash clipboard actions
         ttk.Button(top_frame, text=self._t("btn_clear"),
@@ -178,8 +182,6 @@ class JUMALApp:
 
         ttk.Button(top_frame, text=self._t("btn_get_report"),
                    command=self._on_get_report).pack(side=tk.LEFT, padx=5)
-        ttk.Button(top_frame, text=self._t("btn_copy_summary"),
-                   command=self._on_copy_vt_summary).pack(side=tk.LEFT)
         ttk.Button(top_frame, text=self._t("btn_save_report"),
                    command=self._on_save_vt_report).pack(side=tk.LEFT, padx=5)
 
@@ -187,6 +189,7 @@ class JUMALApp:
             self.frame_vt_analysis, wrap=tk.WORD, state=tk.DISABLED
         )
         self.text_vt_analysis.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self._attach_text_context_menu(self.text_vt_analysis)
 
     def _build_file_analysis_tab(self):
         """Build the File Analysis tab: path input, action buttons, and result text area."""
@@ -196,12 +199,11 @@ class JUMALApp:
         ttk.Label(top_frame, text=self._t("label_file_path")).pack(side=tk.LEFT)
         self.entry_file_path = ttk.Entry(top_frame, width=55)
         self.entry_file_path.pack(side=tk.LEFT, padx=5)
+        self._attach_entry_context_menu(self.entry_file_path)
         ttk.Button(top_frame, text=self._t("btn_browse"),
                    command=self._on_browse_file).pack(side=tk.LEFT, padx=2)
         ttk.Button(top_frame, text=self._t("btn_analyze_file"),
                    command=self._on_analyze_file).pack(side=tk.LEFT, padx=5)
-        ttk.Button(top_frame, text=self._t("btn_copy_summary"),
-                   command=self._on_copy_file_summary).pack(side=tk.LEFT)
         ttk.Button(top_frame, text=self._t("btn_save_report"),
                    command=self._on_save_file_report).pack(side=tk.LEFT, padx=5)
 
@@ -209,6 +211,7 @@ class JUMALApp:
             self.frame_file_analysis, wrap=tk.WORD, state=tk.DISABLED
         )
         self.text_file_analysis.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self._attach_text_context_menu(self.text_file_analysis)
 
     # ------------- Helpers -------------
     def _status_message(self, msg: str):
@@ -249,7 +252,91 @@ class JUMALApp:
         else:
             self.progress.stop()
 
-    # ------------- VT Analysis Handlers -------------
+    # ------------- Context Menu Helpers -------------
+    def _attach_text_context_menu(self, widget: scrolledtext.ScrolledText):
+        """Attach a right-click context menu (Copy Selected / Copy All) to a Text-like widget."""
+        menu = tk.Menu(widget, tearoff=0)
+        menu.add_command(
+            label=self._t("ctx_copy_selected"),
+            command=lambda: self._ctx_copy_selected(widget),
+        )
+        menu.add_command(
+            label=self._t("ctx_copy_all"),
+            command=lambda: self._ctx_copy_all(widget),
+        )
+
+        def _show(event):
+            try:
+                menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                menu.grab_release()
+
+        widget.bind("<Button-3>", _show)
+
+    def _attach_entry_context_menu(self, widget: ttk.Entry):
+        """Attach a right-click context menu (Cut / Copy / Paste) to an Entry widget."""
+        menu = tk.Menu(widget, tearoff=0)
+        menu.add_command(
+            label=self._t("ctx_cut"),
+            command=lambda: self._ctx_entry_cut(widget),
+        )
+        menu.add_command(
+            label=self._t("ctx_copy"),
+            command=lambda: self._ctx_entry_copy(widget),
+        )
+        menu.add_command(
+            label=self._t("ctx_paste"),
+            command=lambda: self._ctx_entry_paste(widget),
+        )
+
+        def _show(event):
+            try:
+                menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                menu.grab_release()
+
+        widget.bind("<Button-3>", _show)
+
+    def _ctx_copy_selected(self, widget: scrolledtext.ScrolledText):
+        """Context menu: copy selected text from a Text widget."""
+        try:
+            text = widget.get(tk.SEL_FIRST, tk.SEL_LAST)
+            self._copy_to_clipboard(text)
+        except tk.TclError:
+            pass  # No selection – silently ignore
+
+    def _ctx_copy_all(self, widget: scrolledtext.ScrolledText):
+        """Context menu: copy all text from a Text widget."""
+        self._copy_to_clipboard(widget.get("1.0", tk.END))
+
+    def _ctx_entry_cut(self, widget: ttk.Entry):
+        """Context menu: cut selected text from an Entry widget."""
+        try:
+            text = widget.selection_get()
+            self._copy_to_clipboard(text)
+            widget.delete(tk.SEL_FIRST, tk.SEL_LAST)
+        except tk.TclError:
+            pass
+
+    def _ctx_entry_copy(self, widget: ttk.Entry):
+        """Context menu: copy selected or all text from an Entry widget."""
+        try:
+            text = widget.selection_get()
+        except tk.TclError:
+            text = widget.get()
+        self._copy_to_clipboard(text)
+
+    def _ctx_entry_paste(self, widget: ttk.Entry):
+        """Context menu: paste clipboard text into an Entry widget."""
+        text = self._paste_from_clipboard()
+        if text:
+            try:
+                widget.delete(tk.SEL_FIRST, tk.SEL_LAST)
+            except tk.TclError:
+                pass
+            widget.insert(tk.INSERT, text)
+
+
     def _on_get_report(self):
         if self._analysis_running:
             return
@@ -422,10 +509,11 @@ class JUMALApp:
                 raw_payload = {
                     "file_path": file_path,
                     "hashes": pipeline_result.hashes,
+                    "vt_status": pipeline_result.vt_status.value,
                     "vt_raw": pipeline_result.vt_raw or {},
                     "static_analysis": (
-                        pipeline_result.static_result.__dict__
-                        if pipeline_result.static_result else {}
+                        dataclasses.asdict(pipeline_result.local_static)
+                        if pipeline_result.local_static else {}
                     ),
                     "pipeline_errors": pipeline_result.pipeline_errors or [],
                 }
@@ -726,9 +814,8 @@ class JUMALApp:
         raw_text = self.text_raw.get("1.0", tk.END).strip()
 
         pipeline = self._last_file_pipeline_result
-        file_label = "unknown"
-        if pipeline and pipeline.hashes:
-            file_label = pipeline.hashes.get("sha256") or pipeline.hashes.get("md5") or "unknown"
+        hashes = pipeline.hashes if pipeline else {}
+        file_label = hashes.get("sha256") or hashes.get("md5") or "unknown"
 
         from datetime import datetime, timezone
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -739,7 +826,7 @@ class JUMALApp:
         report_obj = {
             "file_label": file_label,
             "timestamp_utc": ts,
-            "hashes": pipeline.hashes if pipeline else {},
+            "hashes": hashes,
             "vt_raw": pipeline.vt_raw if pipeline else {},
             "analysis_text": content_text,
             "ioc_summary": self._last_ioc_result or {"error": "IOC extraction not performed or failed"},
@@ -762,6 +849,44 @@ class JUMALApp:
             f.write(content_text)
 
         messagebox.showinfo(self._t("msg_saved"), f"{self._t('msg_saved')}\n{json_path}\n{txt_path}")
+
+    def _on_save_indicators(self):
+        """Save Indicators/Rules text to a user-chosen file."""
+        text = self.text_indicators.get("1.0", tk.END).strip()
+        if not text:
+            messagebox.showinfo(self._t("btn_save_report"), "No content to save.")
+            return
+        path = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+            title=self._t("btn_save_indicators"),
+        )
+        if not path:
+            return
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        messagebox.showinfo(self._t("msg_saved"), f"{self._t('msg_saved')}\n{path}")
+
+    def _on_save_raw(self):
+        """Save Raw output text to a user-chosen file."""
+        text = self.text_raw.get("1.0", tk.END).strip()
+        if not text:
+            messagebox.showinfo(self._t("btn_save_report"), "No content to save.")
+            return
+        path = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            filetypes=[
+                ("Text files", "*.txt"),
+                ("JSON files", "*.json"),
+                ("All files", "*.*"),
+            ],
+            title=self._t("btn_save_raw"),
+        )
+        if not path:
+            return
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        messagebox.showinfo(self._t("msg_saved"), f"{self._t('msg_saved')}\n{path}")
 
     def run(self):
         self.root.mainloop()

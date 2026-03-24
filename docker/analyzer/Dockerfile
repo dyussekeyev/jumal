@@ -26,10 +26,14 @@ RUN pip install --no-cache-dir \
         pdfminer.six
 
 # ── Detect It Easy (diec) ─────────────────────────────────────────────────────
-# Pinned to a known-good release. Update the URL and version tag together when upgrading.
+# Pinned to a known-good release. Update DIE_VERSION when upgrading.
+# Available assets: https://github.com/horsicq/DIE-engine/releases
+ARG DIE_VERSION=3.10
 RUN set -ex \
-    && wget -q "https://github.com/horsicq/DIE-engine/releases/download/3.09/die_lin64_portable_3.09.tar.gz" \
+    && wget --fail -q \
+             "https://github.com/horsicq/DIE-engine/releases/download/${DIE_VERSION}/die_${DIE_VERSION}_portable_Ubuntu_20.04_amd64.tar.gz" \
              -O /tmp/die.tar.gz \
+             || { echo "ERROR: DIE-engine ${DIE_VERSION} asset not found. Check https://github.com/horsicq/DIE-engine/releases and update DIE_VERSION."; exit 1; } \
     && mkdir -p /opt/die \
     && tar -xzf /tmp/die.tar.gz -C /opt/die --strip-components=1 \
     && ln -sf /opt/die/diec /usr/local/bin/diec \

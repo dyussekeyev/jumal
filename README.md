@@ -107,7 +107,17 @@ In `config.json` set:
 
 ### Static analyzer Docker image
 
-The static analyzer (`docker/analyzer/`) is **not** a long-running service. JUMAL builds and runs it automatically on demand the first time you analyze a file. No manual `docker build` is required.
+The static analyzer (`docker/analyzer/`) is **not** a long-running service. JUMAL checks for the image and **builds it automatically on the first file analysis run**. No manual `docker build` is required under normal conditions.
+
+If the auto-build fails (e.g. due to network issues during the build), you can build manually as a fallback:
+
+```bash
+# Run from the repository root
+docker build -t jumal-analyzer:latest docker/analyzer
+```
+
+> The Dockerfile downloads several tools (diec, floss, capa, oletools) during the build.  
+> Ensure your Docker host has internet access and allow 5–10 minutes on first build.
 
 ---
 
@@ -170,6 +180,17 @@ Check that `virustotal.api_key` in `config.json` is correct. Free-tier keys have
 ### LLM auth error
 
 Verify `llm.api_key` and `llm.provider_url` in `config.json`. For Ollama, `api_key` must be empty and `provider_url` must point to `http://localhost:11434`.
+
+### `jumal-analyzer` image not found / pull access denied
+
+If you see `Unable to find image 'jumal-analyzer:latest' locally` in the logs, the auto-build did not run or failed.  
+Build the image manually from the **repository root**:
+
+```bash
+docker build -t jumal-analyzer:latest docker/analyzer
+```
+
+After a successful build (`jumal-analyzer` appears in `docker images`), re-run file analysis.
 
 ### Docker not available – static analysis skipped
 

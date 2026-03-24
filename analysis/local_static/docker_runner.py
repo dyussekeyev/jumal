@@ -109,6 +109,20 @@ class DockerRunner:
         if not os.path.isfile(file_path):
             return self._empty_result(f"File not found: {file_path}")
 
+        # Ensure image exists; auto-build on first use
+        if not self.image_exists():
+            self.logger.info(
+                "[*] Image '%s' not found locally – building automatically "
+                "(this may take several minutes)...",
+                self.image,
+            )
+            if not self.build_image():
+                return self._empty_result(
+                    f"Failed to auto-build image '{self.image}'. "
+                    "Manual fallback: docker build -t jumal-analyzer:latest docker/analyzer"
+                )
+            self.logger.info("[*] Image '%s' built successfully", self.image)
+
         output_dir = tempfile.mkdtemp(prefix="jumal_output_")
         try:
             file_name = os.path.basename(file_path)
