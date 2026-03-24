@@ -49,5 +49,21 @@
   "msg_copied": "Скопировано в буфер обмена.",
   "msg_cleared": "Очищено.",
   "msg_pasted": "Вставлено из буфера обмена.",
-  "msg_saved": "Конфигурация сохранена."
+  "msg_saved": "Конфигурация сохранена.",
+  "tab_file_analysis": "Анализ файла",
+  "btn_browse": "Обзор...",
+  "btn_analyze_file": "Анализировать файл",
+  "label_file_path": "Путь к файлу:",
+  "msg_computing_hashes": "Вычисление хэшей файла...",
+  "msg_vt_hash_lookup": "Запрос VirusTotal по хэшу (без загрузки)...",
+  "msg_vt_file_found": "Файл найден в VirusTotal",
+  "msg_vt_file_not_found": "Файл не найден в VirusTotal (загрузка не выполнялась)",
+  "msg_vt_rate_limited": "Достигнут лимит запросов VirusTotal",
+  "msg_vt_error": "Ошибка запроса VirusTotal",
+  "msg_docker_analysis": "Выполняется статический анализ в Docker...",
+  "msg_docker_unavailable": "Docker недоступен – статический анализ пропущен",
+  "msg_building_llm_context": "Формирование контекста для LLM...",
+  "err_no_file_selected": "Файл не выбран. Пожалуйста, выберите файл.",
+  "err_file_not_found": "Выбранный файл не существует.",
+  "err_file_too_large": "Файл слишком большой (макс. 100 МБ)."
 }

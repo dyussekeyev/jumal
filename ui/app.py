@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext
+from tkinter import ttk, messagebox, scrolledtext, filedialog
 import threading
 import time
 import json
@@ -17,6 +17,8 @@ from clients.llm_client import (
 from core.aggregator import Aggregator
 from core.summarizer import Summarizer
 from core.ioc_extractor import IOCExtractor
+from analysis.local_static.orchestrator import FileAnalysisOrchestrator
+from analysis.local_static.context_builder import CombinedContextBuilder
 
 # Optional VT enrichment endpoints we query (all treated as non-fatal if forbidden):
 #   behaviour              -> sandbox behaviour reports
@@ -58,6 +60,7 @@ class JUMALApp:
         self._last_vt_data = None
         self._last_ioc_summary = None
         self._last_ioc_result = None
+        self._last_file_pipeline_result = None
 
     # ------------- Internationalization -------------
     def _load_languages(self):
@@ -112,6 +115,11 @@ class JUMALApp:
         self.notebook.add(self.frame_indicators, text=self._t("tab_indicators"))
         self.notebook.add(self.frame_raw, text=self._t("tab_raw"))
         self.notebook.add(self.frame_config, text=self._t("tab_config"))
+
+        self.frame_file_analysis = ttk.Frame(self.notebook)
+        self.notebook.add(self.frame_file_analysis, text=self._t("tab_file_analysis"))
+        self._build_file_analysis_tab()
+
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
         # Summary top controls
@@ -650,6 +658,136 @@ class JUMALApp:
         
         self._status_message(self._t("status_reset"))
         messagebox.showinfo(self._t("btn_reset"), self._t("status_reset"))
+
+    def _build_file_analysis_tab(self):
+        """Build the File Analysis tab UI."""
+        top_frame = ttk.Frame(self.frame_file_analysis)
+        top_frame.pack(fill=tk.X, pady=5, padx=5)
+
+        ttk.Label(top_frame, text=self._t("label_file_path")).pack(side=tk.LEFT)
+        self.entry_file_path = ttk.Entry(top_frame, width=55)
+        self.entry_file_path.pack(side=tk.LEFT, padx=5)
+        ttk.Button(top_frame, text=self._t("btn_browse"), command=self._on_browse_file).pack(side=tk.LEFT, padx=2)
+        ttk.Button(top_frame, text=self._t("btn_analyze_file"), command=self._on_analyze_file).pack(side=tk.LEFT, padx=5)
+
+        self.text_file_analysis = scrolledtext.ScrolledText(
+            self.frame_file_analysis, wrap=tk.WORD, state=tk.DISABLED
+        )
+        self.text_file_analysis.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+    def _append_file_analysis(self, text: str):
+        """Append text to the file analysis text area (thread-safe via after)."""
+        def _do():
+            self.text_file_analysis.config(state=tk.NORMAL)
+            self.text_file_analysis.insert(tk.END, text if text.endswith("\n") else text + "\n")
+            self.text_file_analysis.see(tk.END)
+            self.text_file_analysis.config(state=tk.DISABLED)
+        self.root.after(0, _do)
+
+    def _on_browse_file(self):
+        """Open file dialog and populate the file path entry."""
+        path = filedialog.askopenfilename(title="Select file for analysis")
+        if path:
+            self.entry_file_path.delete(0, tk.END)
+            self.entry_file_path.insert(0, path)
+
+    def _on_analyze_file(self):
+        """Validate input and start file analysis in a background thread."""
+        file_path = self.entry_file_path.get().strip()
+        if not file_path:
+            messagebox.showerror("Error", self._t("err_no_file_selected"))
+            return
+        if not os.path.isfile(file_path):
+            messagebox.showerror("Error", self._t("err_file_not_found"))
+            return
+        if os.path.getsize(file_path) > 100 * 1024 * 1024:
+            messagebox.showerror("Error", self._t("err_file_too_large"))
+            return
+
+        self.text_file_analysis.config(state=tk.NORMAL)
+        self.text_file_analysis.delete("1.0", tk.END)
+        self.text_file_analysis.config(state=tk.DISABLED)
+
+        self._status_message(self._t("status_working"))
+        self.progress.start(10)
+        self._run_long_task(lambda: self._process_file(file_path))
+
+    def _process_file(self, file_path: str):
+        """Run the full file analysis pipeline in a background thread."""
+        try:
+            locale = self.config.get("ui", {}).get("default_language", "en")
+
+            orchestrator = FileAnalysisOrchestrator(
+                vt_client=self.vt_client,
+                logger=self.logger,
+                progress_callback=self._append_file_analysis,
+            )
+
+            pipeline_result = orchestrator.run(file_path)
+            self._last_file_pipeline_result = pipeline_result
+
+            # Aggregate VT data if available
+            vt_aggregated = None
+            if pipeline_result.vt_raw:
+                try:
+                    vt_aggregated = self.aggregator.build_struct(pipeline_result.vt_raw)
+                    pipeline_result.vt_aggregated = vt_aggregated
+                except Exception as e:
+                    self.logger.warning(f"VT aggregation failed: {e}")
+
+            # Build combined LLM context
+            self._append_file_analysis(f"[*] {self._t('msg_building_llm_context')}")
+            system_prompt = self.config.get("llm", {}).get("system_prompt", "")
+            context_builder = CombinedContextBuilder(logger=self.logger)
+            prompt = context_builder.build_full_prompt(
+                system_prompt=system_prompt,
+                pipeline=pipeline_result,
+                vt_aggregated=vt_aggregated,
+                locale=locale,
+            )
+
+            self._append_file_analysis(f"[*] {self._t('msg_llm_start')}")
+
+            # LLM streaming
+            content_parts = []
+            try:
+                self.root.after(0, lambda: self.text_file_analysis.config(state=tk.NORMAL))
+                for chunk in self.llm_client.stream_chat(prompt):
+                    content_parts.append(chunk)
+                    self.root.after(0, lambda c=chunk: (
+                        self.text_file_analysis.insert(tk.END, c),
+                        self.text_file_analysis.see(tk.END)
+                    ))
+                    time.sleep(0.005)
+            except LLMAuthError as e:
+                self.logger.error("LLM auth error during file analysis")
+                self._append_file_analysis(f"\n[!] LLM auth error: {e}")
+                self._status_message(self._t("status_error"))
+                return
+            except (LLMBadRequestError, LLMServerError, LLMClientError) as e:
+                self.logger.error(f"LLM request error during file analysis: {e}")
+                self._append_file_analysis(f"\n[!] LLM request failed: {e}")
+                self._status_message(self._t("status_error"))
+                return
+            finally:
+                self.root.after(0, lambda: self.text_file_analysis.config(state=tk.DISABLED))
+
+            full_response = "".join(content_parts)
+            parsed_json, free_text = self.summarizer.extract_json_and_text(full_response)
+            if parsed_json:
+                self._append_file_analysis(
+                    f"\n\nJSON Parsed:\n{json.dumps(parsed_json, indent=2)}"
+                )
+            else:
+                self._append_file_analysis(f"\n\n{self._t('msg_json_parse_fail')}")
+
+            self._status_message(self._t("status_done"))
+        except Exception as e:
+            self.logger.exception("File analysis pipeline error")
+            self._append_file_analysis(f"\n[!] Pipeline error: {e}")
+            self._status_message(self._t("status_error"))
+        finally:
+            self.root.after(0, self.progress.stop)
 
     def run(self):
         self.root.mainloop()

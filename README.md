@@ -1,6 +1,6 @@
 # JUMAL (Junior Malware Analyst)
 
-AI-assisted triage tool for malware samples by hash.  
+AI-assisted triage tool for malware samples by hash or local file.  
 It queries VirusTotal for static, behavioral, MITRE ATT&CK, comments, and crowdsourced YARA / Sigma intelligence, then uses an LLM to summarize malicious capabilities and recommended actions.
 
 > Disclaimer: This tool provides an AI-assisted assessment and does not guarantee accuracy. Always corroborate results with professional malware analysis workflows.
@@ -16,6 +16,12 @@ It queries VirusTotal for static, behavioral, MITRE ATT&CK, comments, and crowds
   - Comments (latest N)
   - Crowdsourced YARA rulesets (if available)
   - Crowdsourced Sigma rules (if available)
+- **Local File Analysis** (new):
+  - Select a local file (up to 100 MB) for analysis
+  - Compute MD5 / SHA1 / SHA256 hashes locally
+  - Query VirusTotal by hash **only** — the file is **never uploaded**
+  - Run Docker-based static analysis tools inside an isolated container
+  - Combined LLM analysis merging VT intelligence with local tool output
 - Aggregates the above into a normalized structure.
 - **Dual LLM Analysis**:
   - **First LLM pass**: Streaming analysis with verdict, confidence, capabilities, and recommendations
@@ -64,6 +70,16 @@ core/
 clients/
   vt_client.py       # VirusTotal API client (improved)
   llm_client.py      # OpenAI-compatible streaming + non-streaming client
+analysis/
+  local_static/
+    models.py         # Data classes: FileAnalysisPipelineResult, StaticAnalysisResult, etc.
+    orchestrator.py   # FileAnalysisOrchestrator – runs the pipeline (hashes → VT → Docker)
+    docker_runner.py  # DockerRunner – spawns the analyzer container
+    context_builder.py # CombinedContextBuilder – builds merged VT + static LLM prompt
+docker/
+  analyzer/
+    Dockerfile         # Static analyzer image (diec, yara, floss, capa, oletools, pdfid)
+    analyzer_entry.py  # Self-contained container entrypoint; writes result.json
 ui/
   app.py             # tkinter application & UI logic
 i18n/
@@ -373,7 +389,42 @@ To add a new language:
 
 - API keys stored in plain text in `config.json`. Restrict file permissions if necessary.
 - No sandboxing or execution of samples — hash-based intelligence only.
+- **Local file analysis**: the file is **never uploaded** to VirusTotal or any external service. Only the SHA256 hash is sent for a lookup.
+- Docker analysis runs with `--network=none`, `--cap-drop=ALL`, `--security-opt=no-new-privileges`, and a read-only sample mount for maximum isolation.
 - LLM prompt may contain third-party comments; consider redacting if privacy is a concern.
+
+---
+
+## File Analysis Pipeline – Details
+
+### Prerequisites
+
+- **Docker** must be installed and running for static analysis tools (graceful degradation if unavailable).
+- On first use, build the analyzer image:
+  ```bash
+  docker build -t jumal-analyzer:latest docker/analyzer/
+  ```
+  The image bundles: **diec**, **YARA**, **FLOSS**, **CAPA**, **oletools** (mraptor, olevba, oledump), and **Didier Stevens** PDF tools (pdfid, pdf-parser).
+
+### How to Use
+
+1. Open the **File Analysis** tab.
+2. Click **Browse…** and select a local file.
+3. Click **Analyze File**.
+4. The pipeline runs in the background:
+   - Computes MD5/SHA1/SHA256 locally.
+   - Queries VirusTotal by hash (no upload).
+   - If Docker is available, runs static analysis inside the isolated container.
+   - Builds a combined LLM context and streams the analysis.
+
+### Security Notes
+
+| Concern | Mitigation |
+|---|---|
+| File upload to VT | **Never happens.** Only hash is sent. |
+| Malware execution | Docker container runs with `--network=none`, `--cap-drop=ALL`, no-new-privileges |
+| Sample access | Read-only bind mount; container cannot modify the host file |
+| Output isolation | Temp directory created per run, deleted after result is read |
 
 ---
 
@@ -409,23 +460,14 @@ Available tests:
 - LLM JSON extraction - `tests/test_llm_json_parse.py`
 - Prompt generation - `tests/test_prompt_generation.py`
 - **IOC extraction prompt & parsing** - `tests/test_ioc_extractor.py`
+- **VT hash-only lookup** - `tests/test_vt_hash_only.py`
+- **File type branching** - `tests/test_file_type_branching.py`
+- **Combined context builder** - `tests/test_combined_context.py`
 
 Run tests:
 ```bash
 cd /home/runner/work/jumal/jumal
-PYTHONPATH=. python tests/test_ioc_extractor.py
-PYTHONPATH=. python tests/test_llm_json_parse.py
-PYTHONPATH=. python tests/test_prompt_generation.py
-```
-
-Suggested additional tests:
-- VT client error paths (mock 404, 429, 5xx).
-- Prompt generation snapshot tests for stability.
-- IOC extraction with various edge cases.
-
-Run tests (if using pytest):
-```bash
-pytest
+PYTHONPATH=. python -m pytest tests/ -v
 ```
 
 ---
