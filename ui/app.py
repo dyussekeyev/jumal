@@ -63,7 +63,6 @@ class JUMALApp:
         self._last_aggregated = None
         self._last_vt_data = None
         self._last_ioc_result = None
-        self._last_ioc_result = None
         self._last_file_pipeline_result = None
         self._last_file_analysis_text = ""
 
@@ -800,15 +799,17 @@ class JUMALApp:
 
         label = hash_input or "unknown"
         json_path = os.path.join(out_dir, f"report_{label}_{ts}.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(report_obj, f, indent=2, ensure_ascii=False)
+        try:
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(report_obj, f, indent=2, ensure_ascii=False)
         except Exception as e:
             messagebox.showerror(self._t("status_error"), f"Failed to save report: {e}")
             return
 
         txt_path = os.path.join(out_dir, f"report_{label}_{ts}.txt")
-        with open(txt_path, "w", encoding="utf-8") as f:
-            f.write(content_summary)
+        try:
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write(content_summary)
         except Exception as e:
             messagebox.showerror(self._t("status_error"), f"Failed to write context: {e}")
             return
@@ -847,15 +848,17 @@ class JUMALApp:
         }
 
         json_path = os.path.join(out_dir, f"file_report_{file_label[:16]}_{ts}.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(report_obj, f, indent=2, ensure_ascii=False, default=str)
+        try:
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(report_obj, f, indent=2, ensure_ascii=False, default=str)
         except Exception as e:
             messagebox.showerror(self._t("status_error"), f"Failed to save report: {e}")
             return
 
         txt_path = os.path.join(out_dir, f"file_report_{file_label[:16]}_{ts}.txt")
-        with open(txt_path, "w", encoding="utf-8") as f:
-            f.write(content_text)
+        try:
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write(content_text)
         except Exception as e:
             messagebox.showerror(self._t("status_error"), f"Failed to write context: {e}")
             return
