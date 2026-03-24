@@ -97,9 +97,11 @@ class Aggregator:
 
     def _extract_urls(self, text: str) -> List[str]:
         """Extract URLs from text."""
-        # Match http:// or https:// URLs
-        url_pattern = r'https?://[A-Za-z0-9._:%\-/?#=&+]+'
-        urls = re.findall(url_pattern, text)
+        if not isinstance(text, str) or not text:
+            return []
+        # Match http:// or https:// URLs up to whitespace or quotes/angle-brackets
+        url_pattern = r'https?://[^\s\'"<>]+'
+        urls = re.findall(url_pattern, text, flags=re.IGNORECASE)
         # Clean trailing punctuation
         cleaned = []
         for url in urls:
