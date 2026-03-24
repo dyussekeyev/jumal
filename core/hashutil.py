@@ -10,6 +10,6 @@ HEX_RE = re.compile(r"^[0-9a-fA-F]+$")
 
 def detect_hash_type(value: str):
     value = value.strip()
-    if len(value) in HASH_TYPES and HEX_RE.match(value):
+    if len(value) in HASH_TYPES and HEX_RE.fullmatch(value):
         return HASH_TYPES[len(value)]
     return None
