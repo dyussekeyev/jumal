@@ -35,6 +35,7 @@ class StaticAnalysisResult:
 @dataclass
 class FileAnalysisPipelineResult:
     file_path: str
+    hashes: Dict[str, str] = field(default_factory=dict)
     local_static: Optional[StaticAnalysisResult] = None
     vt_status: VTFileStatus = VTFileStatus.SKIPPED
     vt_aggregated: Optional[Dict[str, Any]] = None
