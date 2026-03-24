@@ -141,7 +141,7 @@ class JUMALApp:
         )
         self.text_indicators.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self._attach_text_context_menu(self.text_indicators)
-        # Bind shortcuts for indicators text area: Ctrl-C = copy selected, Ctrl-A = copy all
+        # Shortcuts for indicators text
         self.text_indicators.bind("<Control-c>", lambda e: (self._ctx_copy_selected(self.text_indicators), "break")[1])
         self.text_indicators.bind("<Control-a>", lambda e: (self._ctx_copy_all(self.text_indicators), "break")[1])
 
@@ -156,7 +156,7 @@ class JUMALApp:
         )
         self.text_raw.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self._attach_text_context_menu(self.text_raw)
-        # Bind shortcuts for raw text area
+        # Shortcuts for raw text
         self.text_raw.bind("<Control-c>", lambda e: (self._ctx_copy_selected(self.text_raw), "break")[1])
         self.text_raw.bind("<Control-a>", lambda e: (self._ctx_copy_all(self.text_raw), "break")[1])
 
@@ -177,12 +177,12 @@ class JUMALApp:
         self.entry_hash = ttk.Entry(top_frame, width=60)
         self.entry_hash.pack(side=tk.LEFT, padx=5)
         self._attach_entry_context_menu(self.entry_hash)
-        # Bind shortcuts for hash entry: Ctrl-X, Ctrl-C, Ctrl-V
+        # Entry shortcuts (hash field)
         self.entry_hash.bind("<Control-x>", lambda e: (self._ctx_entry_cut(self.entry_hash), "break")[1])
         self.entry_hash.bind("<Control-c>", lambda e: (self._ctx_entry_copy(self.entry_hash), "break")[1])
         self.entry_hash.bind("<Control-v>", lambda e: (self._ctx_entry_paste(self.entry_hash), "break")[1])
 
-        # Hash clipboard actions
+        # Buttons near the hash entry
         ttk.Button(top_frame, text=self._t("btn_clear"),
                    command=self._on_clear_hash, width=6).pack(side=tk.LEFT, padx=2)
         ttk.Button(top_frame, text=self._t("btn_copy"),
@@ -200,7 +200,7 @@ class JUMALApp:
         )
         self.text_vt_analysis.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self._attach_text_context_menu(self.text_vt_analysis)
-        # Bind shortcuts for VT analysis text: Ctrl-C = copy selected, Ctrl-A = copy all
+        # Shortcuts for vt analysis text
         self.text_vt_analysis.bind("<Control-c>", lambda e: (self._ctx_copy_selected(self.text_vt_analysis), "break")[1])
         self.text_vt_analysis.bind("<Control-a>", lambda e: (self._ctx_copy_all(self.text_vt_analysis), "break")[1])
 
@@ -213,7 +213,7 @@ class JUMALApp:
         self.entry_file_path = ttk.Entry(top_frame, width=55)
         self.entry_file_path.pack(side=tk.LEFT, padx=5)
         self._attach_entry_context_menu(self.entry_file_path)
-        # Bind shortcuts for file path entry: Ctrl-X, Ctrl-C, Ctrl-V
+        # Entry shortcuts (file path)
         self.entry_file_path.bind("<Control-x>", lambda e: (self._ctx_entry_cut(self.entry_file_path), "break")[1])
         self.entry_file_path.bind("<Control-c>", lambda e: (self._ctx_entry_copy(self.entry_file_path), "break")[1])
         self.entry_file_path.bind("<Control-v>", lambda e: (self._ctx_entry_paste(self.entry_file_path), "break")[1])
@@ -235,7 +235,7 @@ class JUMALApp:
         )
         self.text_file_analysis.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self._attach_text_context_menu(self.text_file_analysis)
-        # Bind shortcuts for file analysis text area
+        # Shortcuts for file analysis text
         self.text_file_analysis.bind("<Control-c>", lambda e: (self._ctx_copy_selected(self.text_file_analysis), "break")[1])
         self.text_file_analysis.bind("<Control-a>", lambda e: (self._ctx_copy_all(self.text_file_analysis), "break")[1])
 
@@ -362,7 +362,7 @@ class JUMALApp:
                 pass
             widget.insert(tk.INSERT, text)
 
-
+    # ------------- VT-only Handlers -------------
     def _on_get_report(self):
         if self._analysis_running:
             return
@@ -802,10 +802,10 @@ class JUMALApp:
         self._status_message(self._t("msg_cleared"))
 
     def _on_copy_hash(self):
-        """Copy VT-only Analysis text to clipboard (hash area)."""
+        """Copy hash from input field to clipboard."""
         text = self.entry_hash.get()
         if self._copy_to_clipboard(text):
-            self._status_message(self._t("msg_copied"))
+            messagebox.showinfo(self._t("btn_copy"), self._t("msg_copied"))
         else:
             messagebox.showerror(self._t("status_error"), self._t("err_clipboard"))
 
@@ -816,6 +816,14 @@ class JUMALApp:
             self.entry_hash.delete(0, tk.END)
             self.entry_hash.insert(0, text.strip())
             self._status_message(self._t("msg_pasted"))
+        else:
+            messagebox.showerror(self._t("status_error"), self._t("err_clipboard"))
+
+    def _on_copy_vt_summary(self):
+        """Copy VT-only Analysis text to clipboard."""
+        txt = self.text_vt_analysis.get("1.0", tk.END)
+        if self._copy_to_clipboard(txt):
+            messagebox.showinfo(self._t("btn_copy"), self._t("msg_copied"))
         else:
             messagebox.showerror(self._t("status_error"), self._t("err_clipboard"))
 
