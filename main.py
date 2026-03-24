@@ -1,13 +1,11 @@
 import os
-import sys
 from ui.app import JUMALApp
 from core.config import ConfigManager
 from core.logging import init_logging
 
 def ensure_dirs():
     for d in ("logs", "reports"):
-        if not os.path.exists(d):
-            os.makedirs(d, exist_ok=True)
+        os.makedirs(d, exist_ok=True)
 
 def main():
     ensure_dirs()
