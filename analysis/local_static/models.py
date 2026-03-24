@@ -30,6 +30,7 @@ class StaticAnalysisResult:
     tool_runs: List[ToolRun] = field(default_factory=list)
     risk_hints: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
+    raw: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
