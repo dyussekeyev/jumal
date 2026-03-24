@@ -64,6 +64,11 @@ class ConfigManager:
         return changed
 
     def load(self) -> Dict[str, Any]:
+        # Ensure directory exists (in case path contains directories)
+        dirpath = os.path.dirname(self.path)
+        if dirpath and not os.path.exists(dirpath):
+            os.makedirs(dirpath, exist_ok=True)
+    
         if not os.path.exists(self.path):
             self._config = copy.deepcopy(DEFAULT_CONFIG)
             self._normalize()
@@ -71,8 +76,17 @@ class ConfigManager:
         else:
             try:
                 with open(self.path, "r", encoding="utf-8") as f:
-                    self._config = json.load(f)
-            except json.JSONDecodeError:
+                    loaded = json.load(f)
+                # Validate that loaded config is a dict
+                if not isinstance(loaded, dict):
+                    # fallback to defaults
+                    self._config = copy.deepcopy(DEFAULT_CONFIG)
+                    self._normalize()
+                    self.save()
+                else:
+                    self._config = loaded
+            except (json.JSONDecodeError, OSError):
+                # On parse error or read error fallback to defaults
                 self._config = copy.deepcopy(DEFAULT_CONFIG)
                 self._normalize()
                 self.save()
@@ -81,6 +95,10 @@ class ConfigManager:
     def save(self):
         if self._config is None:
             return
+        # Ensure parent directory exists
+        dirpath = os.path.dirname(self.path)
+        if dirpath and not os.path.exists(dirpath):
+            os.makedirs(dirpath, exist_ok=True)
         with open(self.path, "w", encoding="utf-8") as f:
             json.dump(self._config, f, indent=2, ensure_ascii=False)
 
