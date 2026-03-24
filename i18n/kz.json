@@ -49,5 +49,21 @@
   "msg_copied": "Буферге көшірілді.",
   "msg_cleared": "Тазаланды.",
   "msg_pasted": "Буферден қойылды.",
-  "msg_saved": "Конфигурация сақталды."
+  "msg_saved": "Конфигурация сақталды.",
+  "tab_file_analysis": "Файлды талдау",
+  "btn_browse": "Шолу...",
+  "btn_analyze_file": "Файлды талдау",
+  "label_file_path": "Файл жолы:",
+  "msg_computing_hashes": "Файл хэштерін есептеу...",
+  "msg_vt_hash_lookup": "VirusTotal-ға хэш бойынша сұрау (жүктеусіз)...",
+  "msg_vt_file_found": "Файл VirusTotal-да табылды",
+  "msg_vt_file_not_found": "Файл VirusTotal-да табылмады (жүктеу жасалмады)",
+  "msg_vt_rate_limited": "VirusTotal сұрау шегіне жетті",
+  "msg_vt_error": "VirusTotal сұрау қатесі",
+  "msg_docker_analysis": "Docker-да статикалық талдау жүргізілуде...",
+  "msg_docker_unavailable": "Docker қолжетімді емес – статикалық талдау өткізіп жіберілді",
+  "msg_building_llm_context": "LLM контексін қалыптастыру...",
+  "err_no_file_selected": "Файл таңдалмаған. Файлды таңдаңыз.",
+  "err_file_not_found": "Таңдалған файл табылмады.",
+  "err_file_too_large": "Файл тым үлкен (макс. 100 МБ)."
 }

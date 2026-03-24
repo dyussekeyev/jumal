@@ -49,5 +49,21 @@
   "msg_copied": "Copied to clipboard.",
   "msg_cleared": "Cleared.",
   "msg_pasted": "Pasted from clipboard.",
-  "msg_saved": "Configuration saved."
+  "msg_saved": "Configuration saved.",
+  "tab_file_analysis": "File Analysis",
+  "btn_browse": "Browse...",
+  "btn_analyze_file": "Analyze File",
+  "label_file_path": "File Path:",
+  "msg_computing_hashes": "Computing file hashes...",
+  "msg_vt_hash_lookup": "Querying VirusTotal by hash (no upload)...",
+  "msg_vt_file_found": "File found in VirusTotal",
+  "msg_vt_file_not_found": "File not found in VirusTotal (no upload performed)",
+  "msg_vt_rate_limited": "VirusTotal rate limit reached",
+  "msg_vt_error": "VirusTotal lookup error",
+  "msg_docker_analysis": "Running Docker static analysis...",
+  "msg_docker_unavailable": "Docker not available – static analysis skipped",
+  "msg_building_llm_context": "Building combined LLM context...",
+  "err_no_file_selected": "No file selected. Please browse and select a file.",
+  "err_file_not_found": "Selected file does not exist.",
+  "err_file_too_large": "File too large (max 100 MB)."
 }
