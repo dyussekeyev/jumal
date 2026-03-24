@@ -15,6 +15,9 @@ def init_logging(config: Dict[str, Any]) -> logging.Logger:
 
     logger = logging.getLogger("jumal")
     logger.setLevel(level)
+    # avoid propagation to root to prevent duplicate messages
+    logger.propagate = False
+
     if not logger.handlers:
         fh = logging.FileHandler(log_file, encoding="utf-8")
         fmt = logging.Formatter("[%(asctime)s] %(levelname)s %(name)s: %(message)s")
