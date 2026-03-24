@@ -79,7 +79,24 @@ def compute_hashes(path):
 def run_diec(path):
     stdout, stderr, rc, ms, err = _run(["diec", "--json", path], TIMEOUTS["diec"])
     if err == "not_found":
-        return {}, _tool_run("diec", "not_found", ms, error="diec not found")
+        # diec binary missing in container — attempt a simple fallback using `file`
+        # Keep tool_run indicating not_found, but populate some useful fallback info.
+        file_out, file_err, file_rc, file_ms, file_errtag = _run(["file", "-b", path], timeout=5)
+        family, detail, raw = "unknown", "", {}
+        detail = (file_out.strip() if file_out else "") or ""
+        dl = detail.lower()
+        if "pe32" in dl or "pe" in dl or "portable" in dl:
+            family = "pe"
+        elif "elf" in dl:
+            family = "elf"
+        elif "mach-o" in dl or "mach o" in dl:
+            family = "macho"
+        raw = {"file_output": (file_out or "").strip()}
+        tr = _tool_run("diec", "not_found", ms, error="diec not found")
+        # include stdout/stderr placeholders so UI/RAW can show fallback
+        info = {"raw": raw, "format_family": family, "format_detail": detail,
+                "raw_stdout": stdout[:20000], "raw_stderr": stderr[:2000]}
+        return info, tr
 
     status = "ok" if (rc == 0 and not err) else ("timeout" if err == "timeout" else "error")
     tr = _tool_run("diec", status, ms, stderr, error=err or "")
@@ -114,7 +131,10 @@ def run_diec(path):
             elif "elf"  in dl:                  family = "elf"
             elif "mach-o" in dl:                family = "macho"
 
-    return {"raw": raw, "format_family": family, "format_detail": detail}, tr
+    # ensure raw stdout/stderr are included for debugging (truncate to reasonable size)
+    info = {"raw": raw, "format_family": family, "format_detail": detail,
+            "raw_stdout": stdout[:20000], "raw_stderr": stderr[:2000]}
+    return info, tr
 
 
 # ─────────────────────────── yara ────────────────────────────────────────────
@@ -125,18 +145,22 @@ def run_yara(path, rules_dir):
         if p.suffix in (".yar", ".yara", ".rules") and p.is_file()
     ]
     if not rule_files:
-        return {"matches": [], "rules_count": 0}, \
+        return {"matches": [], "rules_count": 0, "raw_stdout": "", "raw_stderr": ""}, \
                _tool_run("yara", "skipped", 0, error="no rules found")
 
     matches, total_ms = [], 0
     last_err = None
+    combined_stdout = []
+    combined_stderr = []
     for rf in rule_files[:10]:
         out, err_txt, rc, ms, err = _run(["yara", "-r", rf, path], TIMEOUTS["yara"])
         total_ms += ms
         if err == "not_found":
-            return {"matches": [], "rules_count": 0}, \
+            return {"matches": [], "rules_count": 0, "raw_stdout": "", "raw_stderr": ""}, \
                    _tool_run("yara", "not_found", total_ms, error="yara not found")
         last_err = err
+        combined_stdout.append(out or "")
+        combined_stderr.append(err_txt or "")
         if rc == 0 and out:
             for line in out.strip().splitlines():
                 line = line.strip()
@@ -146,7 +170,9 @@ def run_yara(path, rules_dir):
                                     "matched_file": parts[1] if len(parts)>1 else path})
 
     status = "timeout" if last_err == "timeout" else ("error" if last_err else "ok")
-    return {"matches": matches, "rules_count": len(rule_files)}, \
+    return {"matches": matches, "rules_count": len(rule_files),
+            "raw_stdout": "\n".join(combined_stdout)[:20000],
+            "raw_stderr": "\n".join(combined_stderr)[:2000]}, \
            _tool_run("yara", status, total_ms)
 
 
@@ -157,13 +183,13 @@ def run_floss(path):
         ["floss", "--no-progress", "--format", "json", path], TIMEOUTS["floss"])
 
     if err == "not_found":
-        return {"static_strings":[], "stack_strings":[], "decoded_strings":[]}, \
+        return {"static_strings":[], "stack_strings":[], "decoded_strings":[], "raw_stdout": "", "raw_stderr": ""}, \
                _tool_run("floss", "not_found", ms, error="floss not found")
 
     status = "ok" if (rc == 0 and not err) else ("timeout" if err=="timeout" else "error")
     tr = _tool_run("floss", status, ms, err_txt, error=err or "")
 
-    res = {"static_strings":[], "stack_strings":[], "decoded_strings":[]}
+    res = {"static_strings":[], "stack_strings":[], "decoded_strings":[], "raw_stdout": out[:20000], "raw_stderr": err_txt[:2000]}
     if out:
         try:
             data = json.loads(out)
@@ -186,7 +212,7 @@ def run_floss(path):
 def run_capa(path):
     out, err_txt, rc, ms, err = _run(["capa", "--json", path], TIMEOUTS["capa"])
     if err == "not_found":
-        return {"error":"not_found","capabilities":[],"attack":[]}, \
+        return {"error":"not_found","capabilities":[],"attack":[], "raw_stdout": "", "raw_stderr": ""}, \
                _tool_run("capa","not_found",ms,error="capa not found")
 
     status = "ok" if (rc == 0 and not err) else ("timeout" if err=="timeout" else "error")
@@ -210,7 +236,7 @@ def run_capa(path):
                                 attack.append({"technique_id": tid, "technique": tname})
         except (ValueError, KeyError):
             pass
-    return {"capabilities": caps[:50], "attack": attack[:30]}, tr
+    return {"capabilities": caps[:50], "attack": attack[:30], "raw_stdout": out[:20000], "raw_stderr": err_txt[:2000]}, tr
 
 
 # ─────────────────────────── office ──────────────────────────────────────────
