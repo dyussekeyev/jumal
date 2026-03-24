@@ -1,6 +1,6 @@
 {
   "label_hash": "Хэш:",
-  "btn_get_report": "Есеп алу",
+  "btn_analyze_hash": "Хэшті талдау",
   "btn_copy_summary": "Қорытындыны көшіру",
   "btn_copy_indicators": "Индикаторларды көшіру",
   "btn_copy_raw": "Шикі нәтижені көшіру",
