@@ -18,6 +18,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libssl-dev \
         libmagic1 \
         file \
+        zlib1g \
+        libstdc++6 \
+        libgcc-s1 \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Python analysis tools ─────────────────────────────────────────────────────
@@ -33,10 +36,11 @@ RUN set -ex \
     && wget -q \
              "https://github.com/horsicq/DIE-engine/releases/download/${DIE_VERSION}/die_${DIE_VERSION}_portable_Ubuntu_20.04_amd64.tar.gz" \
              -O /tmp/die.tar.gz \
-             || { echo "ERROR: DIE-engine ${DIE_VERSION} asset not found. Check https://github.com/horsicq/DIE-engine/releases and update DIE_VERSION."; exit 1; } \
+        || { echo "ERROR: DIE-engine ${DIE_VERSION} asset not found. Check https://github.com/horsicq/DIE-engine/releases and update DIE_VERSION."; exit 1; } \
     && mkdir -p /opt/die \
     && tar -xzf /tmp/die.tar.gz -C /opt/die --strip-components=1 \
     && ln -sf /opt/die/diec /usr/local/bin/diec \
+    && chmod +x /usr/local/bin/diec || true \
     && rm /tmp/die.tar.gz
 
 # ── FLOSS (Mandiant FLARE) ────────────────────────────────────────────────────
@@ -47,9 +51,9 @@ RUN set -ex \
     && unzip -q /tmp/floss.zip floss -d /tmp/floss_out \
     && mv /tmp/floss_out/floss /usr/local/bin/floss \
     && chmod +x /usr/local/bin/floss \
-    && rm -rf /tmp/floss.zip /tmp/floss_out
+    && rm -rf /tmp/floss.zip /tmp/floss_out || true
 
-# ── CAPA (Mandiant) ───────────────────────────────────────────────────────────
+# ── CAPA (Mandiant) ────────────────────────────��──────────────────────────────
 # Pinned release. Update the URL and version tag together when upgrading.
 RUN set -ex \
     && wget -q "https://github.com/mandiant/capa/releases/download/v7.4.0/capa-v7.4.0-linux.zip" \
@@ -57,27 +61,24 @@ RUN set -ex \
     && unzip -q /tmp/capa.zip capa -d /tmp/capa_out \
     && mv /tmp/capa_out/capa /usr/local/bin/capa \
     && chmod +x /usr/local/bin/capa \
-    && rm -rf /tmp/capa.zip /tmp/capa_out
+    && rm -rf /tmp/capa.zip /tmp/capa_out || true
 
 # ── Didier Stevens tools ──────────────────────────────────────────────────────
 RUN set -ex \
-    && wget -q "https://raw.githubusercontent.com/DidierStevens/DidierStevensSuite/master/oledump.py" \
-             -O /usr/local/lib/oledump.py \
-    && wget -q "https://raw.githubusercontent.com/DidierStevens/DidierStevensSuite/master/pdfid.py" \
-             -O /usr/local/lib/pdfid.py \
-    && wget -q "https://raw.githubusercontent.com/DidierStevens/DidierStevensSuite/master/pdf-parser.py" \
-             -O /usr/local/lib/pdf-parser.py
+    && pip install --no-cache-dir oletools pdfminer.six \
+    || true
 
-# ── Workspace ────────────────────────────────────────────────────────────────
-RUN mkdir -p /workspace/input /workspace/output /workspace/rules \
-    && useradd -m -u 1000 analyzer \
-    && chown -R analyzer:analyzer /workspace
+# Create directories expected by analyzer_entry.py
+RUN mkdir -p /workspace/input /workspace/output /workspace/rules
 
-# ── Analyzer entrypoint ───────────────────────────────────────────────────────
-COPY analyzer_entry.py /workspace/analyzer_entry.py
-RUN chown analyzer:analyzer /workspace/analyzer_entry.py
+# Copy any bundled YARA rules from the image build context (if present)
+# This allows shipping default rules inside image build; project also mounts host rules dir at runtime.
+COPY rules/ /workspace/rules/  # no-op if directory doesn't exist
 
-USER analyzer
+# Make sure binaries are executable
+RUN chmod +x /usr/local/bin/capa || true
+RUN chmod +x /usr/local/bin/floss || true
+RUN chmod +x /usr/local/bin/diec || true
+
+# Set a safe working directory
 WORKDIR /workspace
-
-ENTRYPOINT ["python3", "/workspace/analyzer_entry.py"]
