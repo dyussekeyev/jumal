@@ -183,7 +183,7 @@ class JUMALApp:
         self.entry_hash.bind("<Control-v>", lambda e: (self._ctx_entry_paste(self.entry_hash), "break")[1])
 
         # Buttons near the hash entry
-        ttk.Button(top_frame, text=self._t("btn_get_report"),
+        ttk.Button(top_frame, text=self._t("btn_analyze_hash"),
                    command=self._on_get_report).pack(side=tk.LEFT, padx=5)
         ttk.Button(top_frame, text=self._t("btn_save_report"),
                    command=self._on_save_vt_report).pack(side=tk.LEFT, padx=5)
