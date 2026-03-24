@@ -148,7 +148,6 @@ Key sections:
 |-----|----------|
 | **File Analysis** | Local file pipeline: hashes, VT lookup, Docker static tools, LLM summary. Copy Summary and Save Report buttons. |
 | **VT-only Analysis** | Hash-based VT lookup + LLM streaming summary. Copy Summary and Save Report buttons. |
-| **Indicators/Rules** | AI-extracted IOCs from the most recent analysis (11 categories: file names, processes, IPs, domains, URLs, file paths, registry keys, mutexes, YARA, Sigma, other). |
 | **Raw** | Raw JSON output from VT API or the file analysis pipeline. |
 
 ---
