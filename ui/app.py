@@ -62,7 +62,7 @@ class JUMALApp:
         # Stored data for report saving
         self._last_aggregated = None
         self._last_vt_data = None
-        self._last_ioc_summary = None
+        self._last_ioc_result = None
         self._last_ioc_result = None
         self._last_file_pipeline_result = None
         self._last_file_analysis_text = ""
@@ -422,7 +422,7 @@ class JUMALApp:
 
             # Second LLM call for IOC extraction
             self._append_vt_analysis(f"\n[*] {self._t('msg_ioc_extraction')}\n")
-            ioc_summary = self._extract_iocs(aggregated)
+            ioc_result = self._extract_iocs(aggregated)
 
             try:
                 if "raw_text" in ioc_result and ioc_result.get("raw_text"):
@@ -442,7 +442,7 @@ class JUMALApp:
             # Store for report saving
             self._last_aggregated = aggregated
             self._last_vt_data = vt_data
-            self._last_ioc_summary = ioc_summary
+            self._last_ioc_result = ioc_result
 
             if parsed_json:
                 self._append_vt_analysis(f"\n\nJSON Parsed:\n{json.dumps(parsed_json, indent=2)}\n")
@@ -702,18 +702,20 @@ class JUMALApp:
             }
 
     def _append_vt_analysis(self, text: str):
-        """Append text to VT-only Analysis textarea (handles readonly state)."""
-        self.text_vt_analysis.config(state=tk.NORMAL)
-        self.text_vt_analysis.insert(tk.END, text)
-        self.text_vt_analysis.see(tk.END)
-        self.text_vt_analysis.config(state=tk.DISABLED)
-
+        def _do():
+            self.text_vt_analysis.config(state=tk.NORMAL)
+            self.text_vt_analysis.insert(tk.END, text)
+            self.text_vt_analysis.see(tk.END)
+            self.text_vt_analysis.config(state=tk.DISABLED)
+        self.root.after(0, _do)
+    
     def _append_raw(self, text: str):
-        """Append text to Raw textarea (handles readonly state)."""
-        self.text_raw.config(state=tk.NORMAL)
-        self.text_raw.insert(tk.END, text)
-        self.text_raw.see(tk.END)
-        self.text_raw.config(state=tk.DISABLED)
+        def _do():
+            self.text_raw.config(state=tk.NORMAL)
+            self.text_raw.insert(tk.END, text)
+            self.text_raw.see(tk.END)
+            self.text_raw.config(state=tk.DISABLED)
+        self.root.after(0, _do)
 
     def _append_file_analysis(self, text: str):
         """Append text to the File Analysis textarea (thread-safe via after)."""
@@ -787,7 +789,7 @@ class JUMALApp:
                 **(parsed_json or {}),
                 "free_text": free_text
             },
-            "ioc_summary": self._last_ioc_result or {"error": "IOC extraction not performed or failed"},
+            "ioc_result": self._last_ioc_result or {"error": "IOC extraction not performed or failed"},
             "meta": {
                 "generator": "JUMAL 0.1",
                 "analysis_type": "vt_only",
@@ -801,10 +803,16 @@ class JUMALApp:
         json_path = os.path.join(out_dir, f"report_{label}_{ts}.json")
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(report_obj, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            messagebox.showerror(self._t("status_error"), f"Failed to save report: {e}")
+            return
 
         txt_path = os.path.join(out_dir, f"report_{label}_{ts}.txt")
         with open(txt_path, "w", encoding="utf-8") as f:
             f.write(content_summary)
+        except Exception as e:
+            messagebox.showerror(self._t("status_error"), f"Failed to write context: {e}")
+            return
 
         messagebox.showinfo(self._t("msg_saved"), f"{self._t('msg_saved')}\n{json_path}\n{txt_path}")
 
@@ -830,7 +838,7 @@ class JUMALApp:
             "hashes": hashes,
             "vt_raw": pipeline.vt_raw if pipeline else {},
             "analysis_text": content_text,
-            "ioc_summary": self._last_ioc_result or {"error": "IOC extraction not performed or failed"},
+            "ioc_result": self._last_ioc_result or {"error": "IOC extraction not performed or failed"},
             "indicators_text": indicators_text,
             "raw_text": raw_text,
             "meta": {
@@ -844,11 +852,17 @@ class JUMALApp:
         json_path = os.path.join(out_dir, f"file_report_{file_label[:16]}_{ts}.json")
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(report_obj, f, indent=2, ensure_ascii=False, default=str)
+        except Exception as e:
+            messagebox.showerror(self._t("status_error"), f"Failed to save report: {e}")
+            return
 
         txt_path = os.path.join(out_dir, f"file_report_{file_label[:16]}_{ts}.txt")
         with open(txt_path, "w", encoding="utf-8") as f:
             f.write(content_text)
-
+        except Exception as e:
+            messagebox.showerror(self._t("status_error"), f"Failed to write context: {e}")
+            return
+        
         messagebox.showinfo(self._t("msg_saved"), f"{self._t('msg_saved')}\n{json_path}\n{txt_path}")
 
     def _on_save_raw(self):
