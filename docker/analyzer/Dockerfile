@@ -42,6 +42,8 @@ RUN pip install --no-cache-dir \
 # Pinned to a known-good release. Update DIE_VERSION when upgrading.
 # Available assets: https://github.com/horsicq/DIE-engine/releases
 ARG DIE_VERSION=3.10
+# NOTE: apt lists are kept alive until AFTER dpkg-i so that
+# "apt-get install -f" can resolve any unmet dependencies automatically.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libqt5core5a \
         libqt5gui5 \
@@ -50,7 +52,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libqt5network5 \
         libqt5xml5 \
         libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/* \
     && ( \
         wget -q \
             "https://github.com/horsicq/DIE-engine/releases/download/${DIE_VERSION}/die_${DIE_VERSION}_Debian_12_amd64.deb" \
@@ -59,10 +60,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
             "https://github.com/horsicq/DIE-engine/releases/download/${DIE_VERSION}/die_${DIE_VERSION}_Ubuntu_22.04_amd64.deb" \
             -O /tmp/die.deb \
     ) \
-    && dpkg -i /tmp/die.deb \
+    && (dpkg -i /tmp/die.deb || apt-get install -f -y --no-install-recommends) \
     && rm -f /tmp/die.deb \
+    && rm -rf /var/lib/apt/lists/* \
     && (which diec || ln -sf /usr/bin/diec /usr/local/bin/diec || true) \
-    || { echo "WARNING: DIE installation failed; diec will not be available"; rm -f /tmp/die.deb; }
+    || { echo "WARNING: DIE installation failed; diec will not be available"; rm -f /tmp/die.deb; rm -rf /var/lib/apt/lists/*; }
 
 # ── Didier Stevens standalone tools ───────────────────────────────────────────
 # oledump, pdfid, and pdf-parser are standalone scripts not available via pip.
@@ -76,7 +78,10 @@ RUN mkdir -p /usr/local/lib \
     && chmod +x /usr/local/lib/oledump.py /usr/local/lib/pdfid.py /usr/local/lib/pdf-parser.py
 
 # ── Create directories expected by analyzer_entry.py
-RUN mkdir -p /workspace/input /workspace/output /workspace/rules
+# /workspace/tmp is used as TMPDIR so PyInstaller-based tools (floss, capa)
+# can extract their bundled libraries to an exec-capable filesystem instead of
+# the noexec /tmp tmpfs that the host mounts inside the container.
+RUN mkdir -p /workspace/input /workspace/output /workspace/rules /workspace/tmp
 
 # Copy any bundled YARA rules from the image build context (if present)
 # This allows shipping default rules inside image build; project also mounts host rules dir at runtime.

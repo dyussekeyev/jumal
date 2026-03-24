@@ -142,6 +142,9 @@ class DockerRunner:
                 "-v", f"{file_path}:/workspace/input/sample:ro",
                 "-v", f"{output_dir}:/workspace/output:rw",
                 "-e", f"SAMPLE_NAME={file_name}",
+                # Redirect PyInstaller-based tools (floss, capa) away from the
+                # noexec /tmp tmpfs so they can load their bundled shared libs.
+                "-e", "TMPDIR=/workspace/tmp",
             ]
 
             if self.yara_rules_dir and os.path.isdir(self.yara_rules_dir):
