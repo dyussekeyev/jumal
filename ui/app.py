@@ -157,7 +157,7 @@ class JUMALApp:
         self.progress = ttk.Progressbar(status_frame, mode="indeterminate")
         self.progress.pack(side=tk.RIGHT, padx=5)
 
-        # Action for shotrcuts
+        # Action for shortcuts
         for w in (self.text_file_analysis, self.text_vt_analysis, self.text_raw):
             # Ctrl-A / Ctrl-a
             w.bind("<Control-a>", lambda e, widget=w: self._on_select_all(e, widget))
@@ -383,7 +383,7 @@ class JUMALApp:
             vt_data = {}
             self._append_vt_analysis(f"[*] {self._t('msg_fetch_file_report')}\n")
             file_report = self.vt_client.get_file_report(h)
-            if (file_report.get("ok") is False and file_report.get("status") == 404) or file_report.get("not_found"):
+            if file_report.get("ok") is False and file_report.get("status") == 404:
                 self._append_vt_analysis(self._t("msg_not_found"))
                 self._status_message(self._t("status_done"))
                 return
@@ -415,7 +415,7 @@ class JUMALApp:
 
             # Populate raw tab with VT composite JSON
             self._append_raw(json.dumps(vt_data, indent=2) + "\n")
-            self.logger.info(f"Starting LLM analysis for file {file_path}")
+            self.logger.info(f"Starting LLM analysis for hash {h}")
             self._append_vt_analysis(f"\n[*] {self._t('msg_llm_start')}\n")
 
             # LLM streaming
@@ -606,7 +606,7 @@ class JUMALApp:
 
             # Second LLM call for IOC extraction
             self._append_file_analysis(f"\n[*] {self._t('msg_ioc_extraction')}\n")
-            ioc_result = self._extract_iocs(vt_aggregated or pipeline_result.local_static and dataclasses.asdict(pipeline_result.local_static) or {})
+            ioc_result = self._extract_iocs(vt_aggregated or {})
 
             try:
                 if "raw_text" in ioc_result and ioc_result.get("raw_text"):
