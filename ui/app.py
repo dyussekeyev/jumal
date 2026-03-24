@@ -113,15 +113,13 @@ class JUMALApp:
         self.notebook = ttk.Notebook(self.root)
 
         # Create tab frames in the desired display order:
-        # 1. File Analysis  2. VT-only Analysis  3. Indicators/Rules  4. Raw
+        # 1. File Analysis  2. VT-only Analysis  3. Raw
         self.frame_file_analysis = ttk.Frame(self.notebook)
         self.frame_vt_analysis = ttk.Frame(self.notebook)
-        self.frame_indicators = ttk.Frame(self.notebook)
         self.frame_raw = ttk.Frame(self.notebook)
 
         self.notebook.add(self.frame_file_analysis, text=self._t("tab_file_analysis"))
         self.notebook.add(self.frame_vt_analysis, text=self._t("tab_vt_analysis"))
-        self.notebook.add(self.frame_indicators, text=self._t("tab_indicators"))
         self.notebook.add(self.frame_raw, text=self._t("tab_raw"))
 
         # Build each tab's contents
@@ -129,21 +127,6 @@ class JUMALApp:
         self._build_vt_analysis_tab()
 
         self.notebook.pack(fill=tk.BOTH, expand=True)
-
-        # Indicators tab
-        indicators_top = ttk.Frame(self.frame_indicators)
-        indicators_top.pack(fill=tk.X, pady=5, padx=5)
-        ttk.Button(indicators_top, text=self._t("btn_save_indicators"),
-                   command=self._on_save_indicators).pack(side=tk.LEFT)
-
-        self.text_indicators = scrolledtext.ScrolledText(
-            self.frame_indicators, wrap=tk.WORD, state=tk.DISABLED
-        )
-        self.text_indicators.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        self._attach_text_context_menu(self.text_indicators)
-        # Shortcuts for indicators text
-        self.text_indicators.bind("<Control-c>", lambda e: (self._ctx_copy_selected(self.text_indicators), "break")[1])
-        self.text_indicators.bind("<Control-a>", lambda e: (self._ctx_copy_all(self.text_indicators), "break")[1])
 
         # Raw tab
         raw_top = ttk.Frame(self.frame_raw)
@@ -441,13 +424,25 @@ class JUMALApp:
             self._append_vt_analysis(f"\n[*] {self._t('msg_ioc_extraction')}\n")
             ioc_summary = self._extract_iocs(aggregated)
 
+            try:
+                if "raw_text" in ioc_result and ioc_result.get("raw_text"):
+                    raw_text = ioc_result.get("raw_text", "")
+                    def _append_ioc_to_vt():
+                        try:
+                            self.text_vt_analysis.config(state=tk.NORMAL)
+                            self.text_vt_analysis.insert(tk.END, "\n\n[IOC Extraction (AI-assisted)]:\n")
+                            self.text_vt_analysis.insert(tk.END, raw_text)
+                            self.text_vt_analysis.see(tk.END)
+                        finally:
+                            self.text_vt_analysis.config(state=tk.DISABLED)
+                    self.root.after(0, _append_ioc_to_vt)
+            except Exception:
+                self.logger.exception("Failed to append IOC extraction to VT-only Analysis tab")
+
             # Store for report saving
             self._last_aggregated = aggregated
             self._last_vt_data = vt_data
             self._last_ioc_summary = ioc_summary
-
-            # Populate indicators tab
-            self._build_indicators_tab(ioc_summary, source="vt")
 
             if parsed_json:
                 self._append_vt_analysis(f"\n\nJSON Parsed:\n{json.dumps(parsed_json, indent=2)}\n")
@@ -653,9 +648,6 @@ class JUMALApp:
                 else:
                     ioc_result = {"error": "No VT data or local static analysis available for IOC extraction"}
 
-            # Populate indicators tab (existing behaviour)
-            self._build_indicators_tab(ioc_result, source="file")
-
             # Also append IOC raw_text into the File Analysis tab so user sees output inline
             try:
                 if "raw_text" in ioc_result and ioc_result.get("raw_text"):
@@ -687,62 +679,6 @@ class JUMALApp:
         self._last_file_analysis_text = self.text_file_analysis.get("1.0", tk.END)
 
     # ------------- Shared Analysis Helpers -------------
-    def _build_indicators_tab(self, ioc_result: Dict[str, Any], source: str = "vt"):
-        """
-        Populate the Indicators/Rules tab with IOC extraction results.
-
-        Args:
-            ioc_result: IOC result dict (contains raw_text or error)
-            source: "vt" for VT-only analysis, "file" for file analysis
-        """
-        lines = []
-        lines.append("=" * 60)
-        if source == "file":
-            lines.append("IOC EXTRACTION (AI-assisted from file analysis data)")
-        else:
-            lines.append("IOC EXTRACTION (AI-assisted from VirusTotal behavior data)")
-        lines.append("=" * 60)
-        lines.append("")
-
-        if "error" in ioc_result:
-            lines.append("⚠ IOC extraction failed:")
-            lines.append(f"  {ioc_result['error']}")
-            lines.append("")
-
-            self.text_indicators.config(state=tk.NORMAL)
-            self.text_indicators.delete("1.0", tk.END)
-            self.text_indicators.insert(tk.END, "\n".join(lines))
-            self.text_indicators.config(state=tk.DISABLED)
-            return
-
-        # Raw mode – display markdown text
-        if "raw_text" in ioc_result:
-            raw_text = ioc_result.get("raw_text", "")
-            attempts = ioc_result.get("attempts", 1)
-            model = ioc_result.get("model", "unknown")
-
-            lines.append(f"Model: {model} | Attempts: {attempts}")
-            lines.append("")
-            lines.append("-" * 60)
-            lines.append("")
-
-            self.text_indicators.config(state=tk.NORMAL)
-            self.text_indicators.delete("1.0", tk.END)
-            self.text_indicators.insert(tk.END, "\n".join(lines))
-            self.text_indicators.insert(tk.END, raw_text)
-            self.text_indicators.config(state=tk.DISABLED)
-
-            self.logger.info(f"IOC extraction displayed ({len(raw_text)} chars)")
-            return
-
-        # Unexpected format fallback
-        lines.append("⚠ Unexpected IOC result format")
-        lines.append(f"Result keys: {list(ioc_result.keys())}")
-        self.text_indicators.config(state=tk.NORMAL)
-        self.text_indicators.delete("1.0", tk.END)
-        self.text_indicators.insert(tk.END, "\n".join(lines))
-        self.text_indicators.config(state=tk.DISABLED)
-
     def _extract_iocs(self, aggregated: Dict[str, Any]) -> Dict[str, Any]:
         """
         Perform the second LLM call to extract IOCs from aggregated data.
@@ -800,14 +736,6 @@ class JUMALApp:
     def _on_copy_file_summary(self):
         """Copy File Analysis text to clipboard."""
         txt = self.text_file_analysis.get("1.0", tk.END)
-        if self._copy_to_clipboard(txt):
-            messagebox.showinfo(self._t("btn_copy"), self._t("msg_copied"))
-        else:
-            messagebox.showerror(self._t("status_error"), self._t("err_clipboard"))
-
-    def _on_copy_indicators(self):
-        """Copy Indicators/Rules text to clipboard."""
-        txt = self.text_indicators.get("1.0", tk.END)
         if self._copy_to_clipboard(txt):
             messagebox.showinfo(self._t("btn_copy"), self._t("msg_copied"))
         else:
@@ -922,23 +850,6 @@ class JUMALApp:
             f.write(content_text)
 
         messagebox.showinfo(self._t("msg_saved"), f"{self._t('msg_saved')}\n{json_path}\n{txt_path}")
-
-    def _on_save_indicators(self):
-        """Save Indicators/Rules text to a user-chosen file."""
-        text = self.text_indicators.get("1.0", tk.END).strip()
-        if not text:
-            messagebox.showinfo(self._t("btn_save_report"), "No content to save.")
-            return
-        path = filedialog.asksaveasfilename(
-            defaultextension=".txt",
-            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
-            title=self._t("btn_save_indicators"),
-        )
-        if not path:
-            return
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(text)
-        messagebox.showinfo(self._t("msg_saved"), f"{self._t('msg_saved')}\n{path}")
 
     def _on_save_raw(self):
         """Save Raw output text to a user-chosen file."""
