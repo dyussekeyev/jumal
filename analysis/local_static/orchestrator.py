@@ -172,13 +172,16 @@ class FileAnalysisOrchestrator:
                 raw_static = self.docker_runner.run_analysis(file_path)
                 static_result = self._parse_static_result(raw_static)
 
-                # Back-fill from host-computed values where container couldn't
-                if not static_result.sample.get("hashes"):
-                    static_result.sample["hashes"] = hashes
-                if not static_result.sample.get("file_name"):
-                    static_result.sample["file_name"] = os.path.basename(file_path)
-                if not static_result.sample.get("file_size"):
-                    static_result.sample["file_size"] = file_size
+                # Back-fill from host-computed values where container couldn't.
+                # Build a new dict to avoid mutating the parsed result in place.
+                merged_sample = dict(static_result.sample)
+                if not merged_sample.get("hashes"):
+                    merged_sample["hashes"] = hashes
+                if not merged_sample.get("file_name"):
+                    merged_sample["file_name"] = os.path.basename(file_path)
+                if not merged_sample.get("file_size"):
+                    merged_sample["file_size"] = file_size
+                static_result.sample = merged_sample
 
                 result.local_static = static_result
                 self._progress("[*] Docker static analysis complete")

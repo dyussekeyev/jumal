@@ -43,18 +43,20 @@ PDFPARSE = "/usr/local/lib/pdf-parser.py"
 def _run(cmd, timeout=60):
     """
     Run *cmd* and return (stdout, stderr, returncode, elapsed_ms, error_tag).
-    error_tag is None | "timeout" | "not_found" | str(exception).
+    error_tag is None when the tool ran (even if it exited non-zero);
+    otherwise "timeout", "not_found", or a string describing the exception.
+    returncode is None when the tool could not be started.
     """
     t0 = time.monotonic()
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         return r.stdout, r.stderr, r.returncode, int((time.monotonic()-t0)*1000), None
     except subprocess.TimeoutExpired:
-        return "", "", -1, int((time.monotonic()-t0)*1000), "timeout"
+        return "", "", None, int((time.monotonic()-t0)*1000), "timeout"
     except FileNotFoundError:
-        return "", "", -2, int((time.monotonic()-t0)*1000), "not_found"
+        return "", "", None, int((time.monotonic()-t0)*1000), "not_found"
     except Exception as exc:
-        return "", "", -3, int((time.monotonic()-t0)*1000), str(exc)
+        return "", "", None, int((time.monotonic()-t0)*1000), str(exc)
 
 
 def _tool_run(tool, status, elapsed, stderr="", error=""):
