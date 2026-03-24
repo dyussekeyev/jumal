@@ -1,6 +1,6 @@
 {
   "label_hash": "Хэш:",
-  "btn_get_report": "Получить отчёт",
+  "btn_analyze_hash": "Проанализировать хэш",
   "btn_copy_summary": "Копировать резюме",
   "btn_copy_indicators": "Копировать индикаторы",
   "btn_copy_raw": "Копировать сырой вывод",
