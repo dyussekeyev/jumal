@@ -347,8 +347,8 @@ class JUMALApp:
         if not ht:
             messagebox.showerror("Error", self._t("err_invalid_hash"))
             return
-        # Clear VT analysis, indicators, and raw tabs
-        for widget in (self.text_vt_analysis, self.text_raw, self.text_indicators):
+        # Clear VT analysis and raw tabs
+        for widget in (self.text_vt_analysis, self.text_raw):
             widget.config(state=tk.NORMAL)
             widget.delete("1.0", tk.END)
             widget.config(state=tk.DISABLED)
@@ -480,8 +480,8 @@ class JUMALApp:
             messagebox.showerror("Error", self._t("err_file_too_large"))
             return
 
-        # Clear file analysis, indicators, and raw tabs
-        for widget in (self.text_file_analysis, self.text_raw, self.text_indicators):
+        # Clear file analysis and raw tabs
+        for widget in (self.text_file_analysis, self.text_raw):
             widget.config(state=tk.NORMAL)
             widget.delete("1.0", tk.END)
             widget.config(state=tk.DISABLED)
@@ -662,7 +662,6 @@ class JUMALApp:
                             self.text_file_analysis.config(state=tk.DISABLED)
                     self.root.after(0, _append_ioc_to_file_analysis)
             except Exception:
-                # Non-fatal: if we fail to append into the file tab, the indicators tab still contains the result
                 self.logger.exception("Failed to append IOC extraction to File Analysis tab")
 
             self._status_message(self._t("status_done"))
@@ -819,7 +818,6 @@ class JUMALApp:
     def _on_save_file_report(self):
         """Save the File Analysis result as JSON + TXT reports."""
         content_text = self.text_file_analysis.get("1.0", tk.END).strip()
-        indicators_text = self.text_indicators.get("1.0", tk.END).strip()
         raw_text = self.text_raw.get("1.0", tk.END).strip()
 
         pipeline = self._last_file_pipeline_result
@@ -839,7 +837,6 @@ class JUMALApp:
             "vt_raw": pipeline.vt_raw if pipeline else {},
             "analysis_text": content_text,
             "ioc_result": self._last_ioc_result or {"error": "IOC extraction not performed or failed"},
-            "indicators_text": indicators_text,
             "raw_text": raw_text,
             "meta": {
                 "generator": "JUMAL 0.1",
