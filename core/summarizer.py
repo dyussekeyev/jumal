@@ -92,10 +92,10 @@ class Summarizer:
         b = aggregated.get("basic", {})
         lines = []
         lines.append("FILE SUMMARY:")
-        lines.append(f"Detections: {b.get('detections')}")
-        lines.append(f"Type: {b.get('type_description')}")
-        lines.append(f"Size: {b.get('size')}")
-        lines.append(f"Names: {', '.join(b.get('names', []))}")
+        lines.append(f"Detections: {b.get('detections', 0)}")
+        lines.append(f"Type: {b.get('type_description', 'unknown')}")
+        lines.append(f"Size: {b.get('size', 'unknown')}")
+        lines.append(f"Names: {', '.join(b.get('names', [])[:5]) or 'none'}")
         lines.append("")
         lines.append("MITRE TECHNIQUES:")
         for t in aggregated.get("mitre", []):
