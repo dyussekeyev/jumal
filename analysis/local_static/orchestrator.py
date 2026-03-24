@@ -128,6 +128,7 @@ class FileAnalysisOrchestrator:
             tool_runs=tool_runs,
             risk_hints=raw.get("risk_hints", []),
             errors=raw.get("errors", []),
+            raw=raw or {},
         )
 
     def run(self, file_path: str) -> FileAnalysisPipelineResult:
