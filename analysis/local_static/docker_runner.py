@@ -1,29 +1,25 @@
+import os
 import subprocess
 import tempfile
 import shutil
-import os
 import json
 import logging
 from typing import Optional, Dict, Any
 
-
+# Default docker image name used by DockerRunner
 DOCKER_IMAGE = "jumal-analyzer:latest"
-DEFAULT_TIMEOUT = 300  # 5 minutes overall container timeout
-
-
-class DockerRunnerError(Exception):
-    pass
+DEFAULT_TIMEOUT = 300  # seconds
 
 
 class DockerRunner:
     """
-    Runs static analysis inside a Docker container.
+    Helper to run the bundled static analyzer inside a temporary Docker container.
 
-    The container receives:
-      - the sample as /workspace/input/sample (read-only bind mount)
-      - a writable output dir at /workspace/output
-
-    It produces /workspace/output/result.json which is read and returned.
+    Responsibilities:
+      - Ensure analyzer image exists (auto-build if missing)
+      - Mount the sample and an output dir into the container
+      - Optionally mount a host YARA rules directory into the container
+      - Return the analyzer result.json as a Python dict
     """
 
     def __init__(
@@ -37,7 +33,17 @@ class DockerRunner:
         self.image = image
         self.dockerfile_path = dockerfile_path or self._default_dockerfile_path()
         self.timeout = timeout
-        self.yara_rules_dir = yara_rules_dir
+        # If yara_rules_dir is not provided, default to docker/analyzer/rules inside the repo
+        if yara_rules_dir and os.path.isdir(yara_rules_dir):
+            self.yara_rules_dir = yara_rules_dir
+        else:
+            # default to rules folder next to Dockerfile
+            candidate = os.path.join(self.dockerfile_path, "rules")
+            if os.path.isdir(candidate):
+                self.yara_rules_dir = candidate
+            else:
+                self.yara_rules_dir = None
+
         self.logger = logger or logging.getLogger(__name__)
 
     def _default_dockerfile_path(self) -> str:
