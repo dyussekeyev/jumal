@@ -809,6 +809,16 @@ class JUMALApp:
         else:
             messagebox.showerror(self._t("status_error"), self._t("err_clipboard"))
 
+    def _on_paste_hash(self):
+        """Paste hash from clipboard to input field."""
+        text = self._paste_from_clipboard()
+        if text:
+            self.entry_hash.delete(0, tk.END)
+            self.entry_hash.insert(0, text.strip())
+            self._status_message(self._t("msg_pasted"))
+        else:
+            messagebox.showerror(self._t("status_error"), self._t("err_clipboard"))
+
     def _on_copy_file_summary(self):
         """Copy File Analysis text to clipboard."""
         txt = self.text_file_analysis.get("1.0", tk.END)
