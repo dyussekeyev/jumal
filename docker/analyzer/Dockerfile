@@ -34,39 +34,63 @@ RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir \
         oletools \
         pdfminer.six \
-        floss \
-        capa
+        flare-floss \
+        flare-capa
 
 # ── Detect It Easy (diec) ─────────────────────────────────────────────────────
+# Install Qt5 runtime libraries required by DIE, then install the Debian 12 deb.
 # Pinned to a known-good release. Update DIE_VERSION when upgrading.
 # Available assets: https://github.com/horsicq/DIE-engine/releases
 ARG DIE_VERSION=3.10
-RUN set -ex \
-    && wget -q \
-             "https://github.com/horsicq/DIE-engine/releases/download/${DIE_VERSION}/die_${DIE_VERSION}_portable_Ubuntu_20.04_amd64.tar.gz" \
-             -O /tmp/die.tar.gz \
-        || { echo "WARNING: DIE-engine ${DIE_VERSION} asset not found. Continuing without diec."; exit 0; } \
-    && mkdir -p /opt/die \
-    && tar -xzf /tmp/die.tar.gz -C /opt/die --strip-components=1 \
-    && if [ -f /opt/die/diec ]; then ln -sf /opt/die/diec /usr/local/bin/diec && chmod +x /usr/local/bin/diec; fi \
-    && rm -rf /tmp/die.tar.gz || true
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libqt5core5a \
+        libqt5gui5 \
+        libqt5widgets5 \
+        libqt5script5 \
+        libqt5network5 \
+        libqt5xml5 \
+        libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/* \
+    && ( \
+        wget -q \
+            "https://github.com/horsicq/DIE-engine/releases/download/${DIE_VERSION}/die_${DIE_VERSION}_Debian_12_amd64.deb" \
+            -O /tmp/die.deb \
+        || wget -q \
+            "https://github.com/horsicq/DIE-engine/releases/download/${DIE_VERSION}/die_${DIE_VERSION}_Ubuntu_22.04_amd64.deb" \
+            -O /tmp/die.deb \
+    ) \
+    && dpkg -i /tmp/die.deb \
+    && rm -f /tmp/die.deb \
+    && (which diec || ln -sf /usr/bin/diec /usr/local/bin/diec || true) \
+    || { echo "WARNING: DIE installation failed; diec will not be available"; rm -f /tmp/die.deb; }
 
-# ── Ensure python-based utilities are available as commands ───────────────────
-# Some pip-installed packages expose console scripts (floss, capa) in /usr/local/bin - ensure executable bit
-RUN chmod +x /usr/local/bin/floss || true
-RUN chmod +x /usr/local/bin/capa || true
+# ── Didier Stevens standalone tools ───────────────────────────────────────────
+# oledump, pdfid, and pdf-parser are standalone scripts not available via pip.
+RUN mkdir -p /usr/local/lib \
+    && wget -q "https://raw.githubusercontent.com/DidierStevens/DidierStevensSuite/master/oledump.py" \
+         -O /usr/local/lib/oledump.py \
+    && wget -q "https://raw.githubusercontent.com/DidierStevens/DidierStevensSuite/master/pdfid.py" \
+         -O /usr/local/lib/pdfid.py \
+    && wget -q "https://raw.githubusercontent.com/DidierStevens/DidierStevensSuite/master/pdf-parser.py" \
+         -O /usr/local/lib/pdf-parser.py \
+    && chmod +x /usr/local/lib/oledump.py /usr/local/lib/pdfid.py /usr/local/lib/pdf-parser.py
 
 # ── Create directories expected by analyzer_entry.py
-RUN mkdir -p /workspace/input /workspace/output /workspace/rules /usr/local/lib
+RUN mkdir -p /workspace/input /workspace/output /workspace/rules
 
 # Copy any bundled YARA rules from the image build context (if present)
 # This allows shipping default rules inside image build; project also mounts host rules dir at runtime.
-COPY rules/ /workspace/rules/  # no-op if directory doesn't exist
+COPY rules/ /workspace/rules/
+
+# Copy the analyzer entrypoint script
+COPY analyzer_entry.py /workspace/analyzer_entry.py
 
 # Make sure binaries are executable (best-effort)
-RUN chmod +x /usr/local/bin/capa || true
-RUN chmod +x /usr/local/bin/floss || true
-RUN chmod +x /usr/local/bin/diec || true
+RUN chmod +x /usr/local/bin/capa || true \
+    && chmod +x /usr/local/bin/floss || true \
+    && chmod +x /usr/local/bin/diec || true
 
 # Set a safe working directory
 WORKDIR /workspace
+
+ENTRYPOINT ["python3", "/workspace/analyzer_entry.py"]
