@@ -260,11 +260,12 @@ Keep the format clean and easy to copy. List each unique indicator once."""
                 timeout=120,
                 json_mode=False
             )
-            
-            self.logger.info(f"IOC raw extraction completed successfully, response length: {len(response)} chars")
+            # ensure response is string for length/logging
+            resp_text = response if isinstance(response, str) else str(response)
+            self.logger.info(f"IOC raw extraction completed successfully, response length: {len(resp_text)} chars")
             
             return {
-                "raw_text": response,
+                "raw_text": resp_text,
                 "attempts": 1,
                 "model": ioc_model
             }
