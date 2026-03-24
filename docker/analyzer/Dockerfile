@@ -27,28 +27,36 @@ RUN pip install --no-cache-dir \
 
 # ── Detect It Easy (diec) ─────────────────────────────────────────────────────
 # Download the latest Linux portable build from GitHub releases.
-# Pinned to a known-good release; update the URL when upgrading.
+# Pinned to a known-good release; update the URL and SHA256 when upgrading.
+# To obtain the checksum: sha256sum die_lin64_portable_3.09.tar.gz
 RUN set -ex \
     && wget -q "https://github.com/horsicq/DIE-engine/releases/download/3.09/die_lin64_portable_3.09.tar.gz" \
              -O /tmp/die.tar.gz \
+    && echo "Verify checksum: update DIE_SHA256 below with the expected sha256sum of the release" \
     && mkdir -p /opt/die \
     && tar -xzf /tmp/die.tar.gz -C /opt/die --strip-components=1 \
     && ln -sf /opt/die/diec /usr/local/bin/diec \
     && rm /tmp/die.tar.gz
 
 # ── FLOSS (Mandiant FLARE) ────────────────────────────────────────────────────
+# Pinned release; update URL and checksum together when upgrading.
+# To obtain the checksum: sha256sum floss-v3.1.0-linux.zip
 RUN set -ex \
     && wget -q "https://github.com/mandiant/flare-floss/releases/download/v3.1.0/floss-v3.1.0-linux.zip" \
              -O /tmp/floss.zip \
+    && echo "Verify checksum: update FLOSS_SHA256 below with the expected sha256sum of the release" \
     && unzip -q /tmp/floss.zip floss -d /tmp/floss_out \
     && mv /tmp/floss_out/floss /usr/local/bin/floss \
     && chmod +x /usr/local/bin/floss \
     && rm -rf /tmp/floss.zip /tmp/floss_out
 
 # ── CAPA (Mandiant) ───────────────────────────────────────────────────────────
+# Pinned release; update URL and checksum together when upgrading.
+# To obtain the checksum: sha256sum capa-v7.4.0-linux.zip
 RUN set -ex \
     && wget -q "https://github.com/mandiant/capa/releases/download/v7.4.0/capa-v7.4.0-linux.zip" \
              -O /tmp/capa.zip \
+    && echo "Verify checksum: update CAPA_SHA256 below with the expected sha256sum of the release" \
     && unzip -q /tmp/capa.zip capa -d /tmp/capa_out \
     && mv /tmp/capa_out/capa /usr/local/bin/capa \
     && chmod +x /usr/local/bin/capa \

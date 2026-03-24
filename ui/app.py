@@ -712,6 +712,11 @@ class JUMALApp:
         self.progress.start(10)
         self._run_long_task(lambda: self._process_file(file_path))
 
+    def _stream_append(self, chunk: str):
+        """Append a streaming LLM chunk to the file analysis text area (UI thread)."""
+        self.text_file_analysis.insert(tk.END, chunk)
+        self.text_file_analysis.see(tk.END)
+
     def _process_file(self, file_path: str):
         """Run the full file analysis pipeline in a background thread."""
         try:
@@ -754,10 +759,7 @@ class JUMALApp:
                 self.root.after(0, lambda: self.text_file_analysis.config(state=tk.NORMAL))
                 for chunk in self.llm_client.stream_chat(prompt):
                     content_parts.append(chunk)
-                    self.root.after(0, lambda c=chunk: (
-                        self.text_file_analysis.insert(tk.END, c),
-                        self.text_file_analysis.see(tk.END)
-                    ))
+                    self.root.after(0, self._stream_append, chunk)
                     time.sleep(0.005)
             except LLMAuthError as e:
                 self.logger.error("LLM auth error during file analysis")
