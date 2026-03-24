@@ -578,10 +578,86 @@ class JUMALApp:
             if vt_aggregated:
                 ioc_result = self._extract_iocs(vt_aggregated)
             else:
-                # Build minimal aggregated structure from static data for IOC extraction
-                ioc_result = {"error": "No VT data available for IOC extraction"}
+                # No VT data — try to build a minimal aggregated structure from local static analysis
+                if pipeline_result.local_static:
+                    static = pipeline_result.local_static
+                    # basic block
+                    basic = {
+                        "detections": 0,
+                        "type_description": None,
+                        "names": []
+                    }
+                    try:
+                        basic["type_description"] = (
+                            static.file_type.get("die", {}).get("format_detail")
+                            or static.file_type.get("format_family")
+                        )
+                    except Exception:
+                        basic["type_description"] = None
 
+                    try:
+                        fname = static.sample.get("file_name")
+                        if fname:
+                            basic["names"] = [fname]
+                    except Exception:
+                        pass
+
+                    minimal_agg = {
+                        "basic": basic,
+                        "mitre": [],
+                        "processes": [],
+                        "network": [],
+                        "comments": [],
+                        # include any yara/sigma candidates from static analysis if present
+                        "yara_ruleset": static.generic_analysis.get("yara") if getattr(static, "generic_analysis", None) else None,
+                        "sigma_rules": static.generic_analysis.get("sigma") if getattr(static, "generic_analysis", None) else None,
+                    }
+
+                    # Try to collect some process-like strings from specialized_analysis if available
+                    try:
+                        sa = static.specialized_analysis or {}
+                        # many static tools report executed commandlines or process names under different keys;
+                        # be conservative: collect any short strings we can find
+                        proc_candidates = []
+                        for k in ("behaviour", "execution", "processes"):
+                            v = sa.get(k)
+                            if isinstance(v, dict):
+                                entries = v.get("processes") or v.get("processes_created") or []
+                                for e in entries[:25]:
+                                    if isinstance(e, str):
+                                        proc_candidates.append(e)
+                                    elif isinstance(e, dict):
+                                        pname = e.get("command_line") or e.get("name")
+                                        if pname:
+                                            proc_candidates.append(pname)
+                        if proc_candidates:
+                            minimal_agg["processes"] = proc_candidates[:25]
+                    except Exception:
+                        pass
+
+                    ioc_result = self._extract_iocs(minimal_agg)
+                else:
+                    ioc_result = {"error": "No VT data or local static analysis available for IOC extraction"}
+
+            # Populate indicators tab (existing behaviour)
             self._build_indicators_tab(ioc_result, source="file")
+
+            # Also append IOC raw_text into the File Analysis tab so user sees output inline
+            try:
+                if "raw_text" in ioc_result and ioc_result.get("raw_text"):
+                    raw_text = ioc_result.get("raw_text", "")
+                    def _append_ioc_to_file_analysis():
+                        try:
+                            self.text_file_analysis.config(state=tk.NORMAL)
+                            self.text_file_analysis.insert(tk.END, "\n\n[IOC Extraction (AI-assisted)]:\n")
+                            self.text_file_analysis.insert(tk.END, raw_text)
+                            self.text_file_analysis.see(tk.END)
+                        finally:
+                            self.text_file_analysis.config(state=tk.DISABLED)
+                    self.root.after(0, _append_ioc_to_file_analysis)
+            except Exception:
+                # Non-fatal: if we fail to append into the file tab, the indicators tab still contains the result
+                self.logger.exception("Failed to append IOC extraction to File Analysis tab")
 
             self._status_message(self._t("status_done"))
         except Exception as e:
