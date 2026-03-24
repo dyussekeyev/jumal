@@ -1,6 +1,6 @@
 {
   "label_hash": "Hash:",
-  "btn_get_report": "Get Report",
+  "btn_analyze_hash": "Analyze Hash",
   "btn_copy_summary": "Copy Summary",
   "btn_copy_indicators": "Copy Indicators",
   "btn_copy_raw": "Copy Raw Output",
