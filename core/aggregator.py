@@ -5,8 +5,8 @@ class Aggregator:
     """
     Aggregates VirusTotal responses into normalized structure.
 
-    MITRE: из behaviour_mitre_trees
-    YARA/Sigma: из поведения (crowdsourced_yara_results / crowdsourced_sigma_results)
+    MITRE: extracted from behaviour_mitre_trees
+    YARA/Sigma: extracted from behaviour data (crowdsourced_yara_results / crowdsourced_sigma_results)
     """
 
     def __init__(self, logger):
@@ -39,19 +39,19 @@ class Aggregator:
 
     def _extract_yara_sigma(self, behaviours_node) -> tuple[Any, Any]:
         """
-        Возвращает (yara_results, sigma_results).
-        Формат VT может быть:
+        Extract (yara_results, sigma_results) from a behaviours node.
+        VT API format may be:
           behaviours_node.data.crowdsourced_yara_results
           behaviours_node.data.attributes.crowdsourced_yara_results
-          (то же для sigma)
-        Берём сырые списки (ограничим по длине).
+          (same for sigma)
+        Returns raw lists capped at 50 items each.
         """
         candidates = []
         if isinstance(behaviours_node, dict):
             candidates.append(behaviours_node.get("data"))
             if isinstance(behaviours_node.get("data"), dict):
                 candidates.append(behaviours_node["data"].get("attributes"))
-            # fallback: сам behaviours_node (если структура иная)
+            # fallback: use behaviours_node itself if structure differs
             candidates.append(behaviours_node)
 
         yara_res = None
@@ -61,7 +61,7 @@ class Aggregator:
             if not isinstance(c, dict):
                 continue
             if yara_res is None and "crowdsourced_yara_results" in c:
-                # ограничим до 50 правил
+                # limit to 50 rules
                 raw = c.get("crowdsourced_yara_results")
                 if isinstance(raw, list):
                     yara_res = raw[:50]
@@ -385,7 +385,7 @@ class Aggregator:
             "comments": comments_list,
             "processes": processes,
             "network": network,
-            # Сохраняем старые ключи для Summarizer:
+            # Preserve legacy keys used by Summarizer:
             "yara_ruleset": yara_results,
             "sigma_rules": sigma_results,
             # New IOC categories
