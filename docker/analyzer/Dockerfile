@@ -10,6 +10,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # ── System packages ──────────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        python3-dev \
         wget \
         curl \
         unzip \
@@ -22,7 +24,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         zlib1g-dev \
         libstdc++6 \
         libgcc-s1 \
-        # utilities
         binutils \
     && rm -rf /var/lib/apt/lists/*
 
