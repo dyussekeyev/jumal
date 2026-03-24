@@ -157,6 +157,19 @@ class JUMALApp:
         self.progress = ttk.Progressbar(status_frame, mode="indeterminate")
         self.progress.pack(side=tk.RIGHT, padx=5)
 
+        # Action for shotrcuts
+        for w in (self.text_file_analysis, self.text_vt_analysis, self.text_raw):
+            # Ctrl-A / Ctrl-a
+            w.bind("<Control-a>", lambda e, widget=w: self._on_select_all(e, widget))
+            w.bind("<Control-A>", lambda e, widget=w: self._on_select_all(e, widget))
+            # Ctrl-C / Ctrl-c
+            w.bind("<Control-c>", lambda e, widget=w: self._on_copy_shortcut(e, widget))
+            w.bind("<Control-C>", lambda e, widget=w: self._on_copy_shortcut(e, widget))
+            # macOS (Command)
+            w.bind("<Command-a>", lambda e, widget=w: self._on_select_all(e, widget))
+            w.bind("<Command-c>", lambda e, widget=w: self._on_copy_shortcut(e, widget))
+
+
     def _build_vt_analysis_tab(self):
         """Build the VT-only Analysis tab: hash input, action buttons, and result text area."""
         top_frame = ttk.Frame(self.frame_vt_analysis)
@@ -402,6 +415,7 @@ class JUMALApp:
 
             # Populate raw tab with VT composite JSON
             self._append_raw(json.dumps(vt_data, indent=2) + "\n")
+            self.logger.info(f"Starting LLM analysis for file {file_path}")
             self._append_vt_analysis(f"\n[*] {self._t('msg_llm_start')}\n")
 
             # LLM streaming
@@ -458,6 +472,8 @@ class JUMALApp:
             else:
                 self._append_vt_analysis(f"\n\n{self._t('msg_json_parse_fail')}\n")
 
+            self._append_vt_analysis("\n[+] " + self._t("msg_vt_analysis_done") + "\n")
+            self.logger.info("VT-only analysis completed")
             self._status_message(self._t("status_done"))
         except Exception as e:
             self.logger.exception("Processing error")
@@ -556,6 +572,7 @@ class JUMALApp:
                 locale=locale,
             )
 
+            self.logger.info(f"Starting LLM analysis (VT-only) for hash {h}")
             self._append_file_analysis(f"[*] {self._t('msg_llm_start')}")
 
             # LLM streaming
@@ -673,6 +690,8 @@ class JUMALApp:
             except Exception:
                 self.logger.exception("Failed to append IOC extraction to File Analysis tab")
 
+            self._append_file_analysis("\n[+] " + self._t("msg_file_analysis_done") + "\n")
+            self.logger.info("File analysis completed")
             self._status_message(self._t("status_done"))
         except Exception as e:
             self.logger.exception("File analysis pipeline error")
@@ -734,6 +753,30 @@ class JUMALApp:
             self.text_file_analysis.config(state=tk.DISABLED)
         self.root.after(0, _do)
 
+    def _on_select_all(self, event, widget):
+        """Select all text in widget even if it is DISABLED (temporary enable)."""
+        try:
+            prev_state = widget.cget("state")
+            widget.config(state=tk.NORMAL)
+            widget.tag_add(tk.SEL, "1.0", tk.END)
+            widget.mark_set(tk.INSERT, "1.0")
+            widget.see(tk.INSERT)
+        finally:
+            widget.config(state=prev_state)
+        return "break"
+    
+    def _on_copy_shortcut(self, event, widget):
+        """Copy selected text or whole buffer to clipboard."""
+        try:
+            try:
+                text = widget.get(tk.SEL_FIRST, tk.SEL_LAST)
+            except tk.TclError:
+                text = widget.get("1.0", tk.END)
+            self._copy_to_clipboard(text)
+        except Exception as e:
+            self.logger.debug(f"Copy shortcut failed: {e}")
+        return "break"
+    
     # ------------- Clipboard Handlers -------------
     def _on_copy_vt_summary(self):
         """Copy VT-only Analysis text to clipboard."""
