@@ -87,16 +87,23 @@ class JUMALApp:
     def _init_clients(self):
         vt_cfg = self.config.get("virustotal", {})
         net_cfg = self.config.get("network", {})
-        self.vt_client = VTClient(
-            api_key=vt_cfg.get("api_key", ""),
-            base_url=vt_cfg.get("base_url", "https://www.virustotal.com/api/v3"),
-            min_interval=vt_cfg.get("min_interval_seconds", 15),
-            max_retries=vt_cfg.get("max_retries", 3),
-            backoff_base=vt_cfg.get("retry_backoff_base", 5),
-            timeout=net_cfg.get("request_timeout_seconds", 30),
-            user_agent=net_cfg.get("user_agent", "JUMAL/0.1"),
-            logger=self.logger
-        )
+    
+        # Try to create VT client, but fail gracefully if configuration is missing
+        try:
+            self.vt_client = VTClient(
+                api_key=vt_cfg.get("api_key", ""),
+                base_url=vt_cfg.get("base_url", "https://www.virustotal.com/api/v3"),
+                min_interval=vt_cfg.get("min_interval_seconds", 15),
+                max_retries=vt_cfg.get("max_retries", 3),
+                backoff_base=vt_cfg.get("retry_backoff_base", 5),
+                timeout=net_cfg.get("request_timeout_seconds", 30),
+                user_agent=net_cfg.get("user_agent", "JUMAL/0.1"),
+                logger=self.logger
+            )
+        except Exception as e:
+            self.logger.warning(f"VT client unavailable: {e}")
+            self.vt_client = None
+    
         llm_cfg = self.config.get("llm", {})
         self.llm_client = LLMClient(
             base_url=llm_cfg.get("provider_url", "https://openrouter.ai/api/v1"),
@@ -345,6 +352,9 @@ class JUMALApp:
         ht = detect_hash_type(h)
         if not ht:
             messagebox.showerror("Error", self._t("err_invalid_hash"))
+            return
+        if self.vt_client is None:
+            messagebox.showerror("Error", "VirusTotal client is not configured or unavailable.")
             return
         # Clear VT analysis and raw tabs
         for widget in (self.text_vt_analysis, self.text_raw):
