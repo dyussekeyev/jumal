@@ -17,9 +17,9 @@ MAX_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
 class FileAnalysisOrchestrator:
     """
     Orchestrates the local file analysis pipeline:
-      1. Validate file & compute hashes
-      2. VT hash-only lookup (never uploads)
-      3. Docker static analysis
+      1. Docker static analysis (container computes hashes internally)
+      2. Extract hashes from Docker container result
+      3. VT hash-only lookup (never uploads) — only if use_vt is True
       4. Return FileAnalysisPipelineResult
     """
 
@@ -30,12 +30,14 @@ class FileAnalysisOrchestrator:
         logger: Optional[logging.Logger] = None,
         max_file_size: int = MAX_FILE_SIZE,
         progress_callback: Optional[Callable[[str], None]] = None,
+        use_vt: bool = True,
     ):
         self.vt_client = vt_client
         self.docker_runner = docker_runner if docker_runner is not None else DockerRunner(logger=logger)
         self.logger = logger or logging.getLogger(__name__)
         self.max_file_size = max_file_size
         self.progress_callback = progress_callback or (lambda msg: None)
+        self.use_vt = use_vt
 
     def _progress(self, msg: str) -> None:
         self.logger.info(msg)
@@ -148,36 +150,19 @@ class FileAnalysisOrchestrator:
             )
             return result
 
-        # --- Step 1: Hashes ---
-        self._progress("[*] Computing file hashes (MD5/SHA1/SHA256)...")
-        try:
-            hashes = self._compute_hashes(file_path)
-            self.logger.info(f"SHA256: {hashes['sha256']}")
-        except Exception as e:
-            result.pipeline_errors.append(f"Hash computation failed: {e}")
-            self.logger.exception("Hash computation failed")
-            return result
-
-        result.hashes = hashes
-        sha256 = hashes["sha256"]
-
-        # --- Step 2: VT lookup (hash-only) ---
-        vt_status, vt_raw = self._vt_lookup(sha256)
-        result.vt_status = vt_status
-        result.vt_raw = vt_raw
-
-        # --- Step 3: Docker static analysis ---
+        # --- Step 1: Docker static analysis (container computes hashes internally) ---
+        hashes = None
         if self.docker_runner.is_docker_available():
             self._progress("[*] Starting Docker static analysis...")
             try:
                 raw_static = self.docker_runner.run_analysis(file_path)
                 static_result = self._parse_static_result(raw_static)
 
-                # Back-fill from host-computed values where container couldn't.
-                # Build a new dict to avoid mutating the parsed result in place.
-                merged_sample = dict(static_result.sample)
-                if not merged_sample.get("hashes"):
-                    merged_sample["hashes"] = hashes
+                # Extract hashes from container result
+                hashes = static_result.sample.get("hashes") if static_result.sample else None
+
+                # Fill in file metadata where container couldn't provide it
+                merged_sample = dict(static_result.sample) if static_result.sample else {}
                 if not merged_sample.get("file_name"):
                     merged_sample["file_name"] = os.path.basename(file_path)
                 if not merged_sample.get("file_size"):
@@ -194,13 +179,44 @@ class FileAnalysisOrchestrator:
             result.pipeline_errors.append(
                 "Docker not available – static analysis skipped"
             )
-            # Still fill in hashes via a minimal StaticAnalysisResult
-            result.local_static = StaticAnalysisResult(
-                sample={
-                    "file_name": os.path.basename(file_path),
-                    "file_size": file_size,
-                    "hashes": hashes,
-                }
-            )
+
+        # --- Step 2: Extract hashes — fall back to host computation if Docker didn't provide them ---
+        if not hashes:
+            self._progress("[*] Computing file hashes (MD5/SHA1/SHA256)...")
+            try:
+                hashes = self._compute_hashes(file_path)
+                self.logger.info(f"SHA256: {hashes['sha256']}")
+            except Exception as e:
+                result.pipeline_errors.append(f"Hash computation failed: {e}")
+                self.logger.exception("Hash computation failed")
+                return result
+
+            # Back-fill hashes into the static result (Docker was unavailable)
+            if result.local_static is None:
+                result.local_static = StaticAnalysisResult(
+                    sample={
+                        "file_name": os.path.basename(file_path),
+                        "file_size": file_size,
+                        "hashes": hashes,
+                    }
+                )
+            elif not result.local_static.sample.get("hashes"):
+                merged = dict(result.local_static.sample)
+                merged["hashes"] = hashes
+                result.local_static.sample = merged
+        else:
+            self.logger.info(f"SHA256: {hashes.get('sha256', 'unknown')}")
+
+        result.hashes = hashes
+
+        # --- Step 3: VT lookup (hash-only) — only if use_vt is enabled ---
+        if self.use_vt:
+            sha256 = hashes.get("sha256", "")
+            if sha256:
+                vt_status, vt_raw = self._vt_lookup(sha256)
+                result.vt_status = vt_status
+                result.vt_raw = vt_raw
+            else:
+                self.logger.warning("SHA256 hash unavailable – skipping VT lookup")
 
         return result

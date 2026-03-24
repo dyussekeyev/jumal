@@ -241,7 +241,12 @@ class LLMClient:
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
         
-        r = requests.post(url, headers=headers, json=payload, timeout=timeout)
+        try:
+            r = requests.post(url, headers=headers, json=payload, timeout=timeout)
+        except requests.exceptions.Timeout as e:
+            raise LLMClientError(f"LLM request timed out: {e}") from e
+        except requests.exceptions.ConnectionError as e:
+            raise LLMClientError(f"LLM connection error: {e}") from e
         if r.status_code != 200:
             self._raise_http_error(r)
         
@@ -268,7 +273,12 @@ class LLMClient:
             }
         }
         
-        r = requests.post(url, headers=headers, json=payload, timeout=timeout)
+        try:
+            r = requests.post(url, headers=headers, json=payload, timeout=timeout)
+        except requests.exceptions.Timeout as e:
+            raise LLMClientError(f"LLM request timed out: {e}") from e
+        except requests.exceptions.ConnectionError as e:
+            raise LLMClientError(f"LLM connection error: {e}") from e
         if r.status_code != 200:
             self._raise_http_error(r)
         

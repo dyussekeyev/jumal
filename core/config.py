@@ -8,7 +8,8 @@ DEFAULT_CONFIG = {
         "base_url": "https://www.virustotal.com/api/v3",
         "min_interval_seconds": 15,
         "max_retries": 3,
-        "retry_backoff_base": 5
+        "retry_backoff_base": 5,
+        "use_vt": True
     },
     "llm": {
         "provider_url": "https://openrouter.ai/api/v1",

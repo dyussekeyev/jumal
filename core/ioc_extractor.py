@@ -257,7 +257,7 @@ Keep the format clean and easy to copy. List each unique indicator once."""
                 prompt=combined_prompt,
                 model=ioc_model,
                 temperature=0.0,
-                timeout=None,
+                timeout=120,
                 json_mode=False
             )
             
