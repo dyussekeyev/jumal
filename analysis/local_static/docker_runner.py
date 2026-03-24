@@ -138,7 +138,7 @@ class DockerRunner:
                 "--network=none",
                 "--cap-drop=ALL",
                 "--security-opt=no-new-privileges",
-                "--tmpfs=/tmp:rw,noexec,nosuid,size=256m",
+                "--tmpfs=/tmp:rw,nosuid,size=256m",
                 "-v", f"{file_path}:/workspace/input/sample:ro",
                 "-v", f"{output_dir}:/workspace/output:rw",
                 "-e", f"SAMPLE_NAME={file_name}",
