@@ -15,35 +15,58 @@ class Summarizer:
     
     def extract_first_json_block(self, text: str) -> Optional[str]:
         """
-        Extract the first JSON block from text.
-        
-        Uses brace counting to handle nested objects correctly.
-        
-        Args:
-            text: Text potentially containing JSON
-            
-        Returns:
-            JSON string or None
+        Extract the first top-level JSON block (object or array) from text.
+    
+        Handles:
+        - JSON object starting with '{' or array starting with '['
+        - Quotes and escaped quotes inside strings
+        - Nested structures
+    
+        Returns the JSON substring or None if nothing found.
         """
-        # Find first opening brace
-        start = text.find('{')
-        if start == -1:
+        if not text:
             return None
-        
-        # Count braces to find matching closing brace
-        brace_count = 0
+    
+        # find first opening char for JSON object or array
+        start = None
+        opening = ''
+        for idx, ch in enumerate(text):
+            if ch == '{' or ch == '[':
+                start = idx
+                opening = ch
+                break
+        if start is None:
+            return None
+    
+        # determine matching closing char
+        closing = '}' if opening == '{' else ']'
+    
+        in_string = False
+        escape = False
+        depth = 0
+    
         i = start
         while i < len(text):
-            if text[i] == '{':
-                brace_count += 1
-            elif text[i] == '}':
-                brace_count -= 1
-                if brace_count == 0:
-                    # Found matching closing brace
-                    return text[start:i+1]
+            ch = text[i]
+            if in_string:
+                if escape:
+                    escape = False
+                elif ch == '\\':
+                    escape = True
+                elif ch == '"':
+                    in_string = False
+            else:
+                if ch == '"':
+                    in_string = True
+                elif ch == opening:
+                    depth += 1
+                elif ch == closing:
+                    depth -= 1
+                    if depth == 0:
+                        return text[start:i+1]
             i += 1
-        
-        # No matching closing brace found
+    
+        # no matching close
         return None
 
     def build_prompt(self, system_prompt: str, aggregated: Dict[str, Any]) -> str:
