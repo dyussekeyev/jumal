@@ -30,7 +30,7 @@ RUN pip install --no-cache-dir \
 # Available assets: https://github.com/horsicq/DIE-engine/releases
 ARG DIE_VERSION=3.10
 RUN set -ex \
-    && wget --fail -q \
+    && wget -q \
              "https://github.com/horsicq/DIE-engine/releases/download/${DIE_VERSION}/die_${DIE_VERSION}_portable_Ubuntu_20.04_amd64.tar.gz" \
              -O /tmp/die.tar.gz \
              || { echo "ERROR: DIE-engine ${DIE_VERSION} asset not found. Check https://github.com/horsicq/DIE-engine/releases and update DIE_VERSION."; exit 1; } \

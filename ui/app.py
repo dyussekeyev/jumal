@@ -204,6 +204,11 @@ class JUMALApp:
                    command=self._on_browse_file).pack(side=tk.LEFT, padx=2)
         ttk.Button(top_frame, text=self._t("btn_analyze_file"),
                    command=self._on_analyze_file).pack(side=tk.LEFT, padx=5)
+        self.use_vt_var = tk.BooleanVar(
+            value=self.config.get("virustotal", {}).get("use_vt", True)
+        )
+        ttk.Checkbutton(top_frame, text="Use VT",
+                        variable=self.use_vt_var).pack(side=tk.LEFT, padx=5)
         ttk.Button(top_frame, text=self._t("btn_save_report"),
                    command=self._on_save_file_report).pack(side=tk.LEFT, padx=5)
 
@@ -490,6 +495,7 @@ class JUMALApp:
                 vt_client=self.vt_client,
                 logger=self.logger,
                 progress_callback=self._append_file_analysis,
+                use_vt=self.use_vt_var.get(),
             )
 
             pipeline_result = orchestrator.run(file_path)
