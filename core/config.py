@@ -85,6 +85,8 @@ class ConfigManager:
                     self.save()
                 else:
                     self._config = loaded
+                    if self._normalize():
+                        self.save()
             except (json.JSONDecodeError, OSError):
                 # On parse error or read error fallback to defaults
                 self._config = copy.deepcopy(DEFAULT_CONFIG)
