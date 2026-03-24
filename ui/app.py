@@ -183,13 +183,6 @@ class JUMALApp:
         self.entry_hash.bind("<Control-v>", lambda e: (self._ctx_entry_paste(self.entry_hash), "break")[1])
 
         # Buttons near the hash entry
-        ttk.Button(top_frame, text=self._t("btn_clear"),
-                   command=self._on_clear_hash, width=6).pack(side=tk.LEFT, padx=2)
-        ttk.Button(top_frame, text=self._t("btn_copy"),
-                   command=self._on_copy_hash, width=6).pack(side=tk.LEFT, padx=2)
-        ttk.Button(top_frame, text=self._t("btn_paste"),
-                   command=self._on_paste_hash, width=6).pack(side=tk.LEFT, padx=2)
-
         ttk.Button(top_frame, text=self._t("btn_get_report"),
                    command=self._on_get_report).pack(side=tk.LEFT, padx=5)
         ttk.Button(top_frame, text=self._t("btn_save_report"),
@@ -796,29 +789,6 @@ class JUMALApp:
         self.root.after(0, _do)
 
     # ------------- Clipboard Handlers -------------
-    def _on_clear_hash(self):
-        """Clear the hash input field."""
-        self.entry_hash.delete(0, tk.END)
-        self._status_message(self._t("msg_cleared"))
-
-    def _on_copy_hash(self):
-        """Copy hash from input field to clipboard."""
-        text = self.entry_hash.get()
-        if self._copy_to_clipboard(text):
-            messagebox.showinfo(self._t("btn_copy"), self._t("msg_copied"))
-        else:
-            messagebox.showerror(self._t("status_error"), self._t("err_clipboard"))
-
-    def _on_paste_hash(self):
-        """Paste hash from clipboard to input field."""
-        text = self._paste_from_clipboard()
-        if text:
-            self.entry_hash.delete(0, tk.END)
-            self.entry_hash.insert(0, text.strip())
-            self._status_message(self._t("msg_pasted"))
-        else:
-            messagebox.showerror(self._t("status_error"), self._t("err_clipboard"))
-
     def _on_copy_vt_summary(self):
         """Copy VT-only Analysis text to clipboard."""
         txt = self.text_vt_analysis.get("1.0", tk.END)
