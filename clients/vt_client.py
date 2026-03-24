@@ -27,7 +27,7 @@ class VTClient:
       - /files/{hash}/behaviour_mitre_trees
       - /files/{hash}/comments
 
-    YARA / Sigma больше не дергаются отдельными запросами — их результаты парсятся из поведения.
+    YARA / Sigma are no longer fetched as separate API requests — their results are parsed from the behaviour response.
 
     Backward-compatible aliases:
       - get_behaviour() -> get_behaviours()
