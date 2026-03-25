@@ -88,6 +88,11 @@ RUN mkdir -p /workspace/input /workspace/output /workspace/rules /workspace/tmp
 # Download capa rules required for capability detection
 RUN git clone --depth 1 https://github.com/mandiant/capa-rules.git /workspace/capa-rules
 
+# Download capa signatures (part of the main capa repo under sigs/)
+RUN git clone --depth 1 https://github.com/mandiant/capa.git /tmp/capa-src \
+    && cp -r /tmp/capa-src/sigs /workspace/capa-sigs \
+    && rm -rf /tmp/capa-src
+
 # Copy any bundled YARA rules from the image build context (if present)
 # This allows shipping default rules inside image build; project also mounts host rules dir at runtime.
 COPY rules/ /workspace/rules/

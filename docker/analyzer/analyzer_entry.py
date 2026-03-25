@@ -37,6 +37,7 @@ OLEDUMP   = "/usr/local/lib/oledump.py"
 PDFID     = "/usr/local/lib/pdfid.py"
 PDFPARSE  = "/usr/local/lib/pdf-parser.py"
 CAPA_RULES = "/workspace/capa-rules"
+CAPA_SIGS  = "/workspace/capa-sigs"
 
 
 # ─────────────────────────── helpers ─────────────────────────────────────────
@@ -218,7 +219,11 @@ def run_floss(path, is_pe=False):
 # ─────────────────────────── capa ────────────────────────────────────────────
 
 def run_capa(path):
-    out, err_txt, rc, ms, err = _run(["capa", "--json", "-r", CAPA_RULES, path], TIMEOUTS["capa"])
+    cmd = ["capa", "--json", "-r", CAPA_RULES]
+    if os.path.isdir(CAPA_SIGS):
+        cmd += ["--signatures", CAPA_SIGS]
+    cmd.append(path)
+    out, err_txt, rc, ms, err = _run(cmd, TIMEOUTS["capa"])
     if err == "not_found":
         return {"error":"not_found","capabilities":[],"attack":[], "raw_stdout": "", "raw_stderr": ""}, \
                _tool_run("capa","not_found",ms,error="capa not found")
