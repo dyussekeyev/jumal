@@ -109,8 +109,10 @@ def run_diec(path):
             detects = data.get("detects", [])
             if detects:
                 first = detects[0]
-                ftype  = first.get("type", "").lower()
-                detail = first.get("string", ftype)
+                ftype  = first.get("filetype", first.get("type", "")).lower()
+                values = first.get("values", [])
+                val_str = values[0].get("string", "") if values and isinstance(values[0], dict) else ""
+                detail = val_str or first.get("string", "") or ftype
                 dl     = detail.lower()
                 if any(x in ftype for x in ("pe32","pe64","pe ")):  family = "pe"
                 elif "elf"   in ftype or "elf"   in dl:             family = "elf"
@@ -230,11 +232,18 @@ def run_capa(path):
                                  "attack": meta.get("attack",[])})
                     for att in meta.get("attack", []):
                         if isinstance(att, dict):
-                            tid   = att.get("technique", {}).get("id","")
-                            tname = att.get("technique", {}).get("name","")
+                            technique_val = att.get("technique")
+                            if isinstance(technique_val, dict):
+                                # Old capa format: technique is a dict with id/name
+                                tid   = technique_val.get("id", "")
+                                tname = technique_val.get("name", "")
+                            else:
+                                # New capa format (v7+): technique is a string, id is in att
+                                tid   = att.get("id", "")
+                                tname = str(technique_val) if technique_val else ""
                             if tid:
                                 attack.append({"technique_id": tid, "technique": tname})
-        except (ValueError, KeyError):
+        except (ValueError, KeyError, AttributeError):
             pass
     return {"capabilities": caps[:50], "attack": attack[:30], "raw_stdout": out[:20000], "raw_stderr": err_txt[:2000]}, tr
 
