@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         unzip \
         ca-certificates \
+        git \
         yara \
         libssl-dev \
         libmagic1 \
@@ -83,6 +84,9 @@ RUN mkdir -p /usr/local/lib \
 # can extract their bundled libraries to an exec-capable filesystem instead of
 # the noexec /tmp tmpfs that the host mounts inside the container.
 RUN mkdir -p /workspace/input /workspace/output /workspace/rules /workspace/tmp
+
+# Download capa rules required for capability detection
+RUN git clone --depth 1 https://github.com/mandiant/capa-rules.git /workspace/capa-rules
 
 # Copy any bundled YARA rules from the image build context (if present)
 # This allows shipping default rules inside image build; project also mounts host rules dir at runtime.
