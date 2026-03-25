@@ -33,9 +33,10 @@ TIMEOUTS = {
     "pdf-parser":  60,
 }
 
-OLEDUMP  = "/usr/local/lib/oledump.py"
-PDFID    = "/usr/local/lib/pdfid.py"
-PDFPARSE = "/usr/local/lib/pdf-parser.py"
+OLEDUMP   = "/usr/local/lib/oledump.py"
+PDFID     = "/usr/local/lib/pdfid.py"
+PDFPARSE  = "/usr/local/lib/pdf-parser.py"
+CAPA_RULES = "/workspace/capa-rules"
 
 
 # ─────────────────────────── helpers ─────────────────────────────────────────
@@ -180,9 +181,14 @@ def run_yara(path, rules_dir):
 
 # ─────────────────────────── floss ───────────────────────────────────────────
 
-def run_floss(path):
-    out, err_txt, rc, ms, err = _run(
-        ["floss", "--no-progress", "--format", "json", path], TIMEOUTS["floss"])
+def run_floss(path, is_pe=False):
+    # PE files support full analysis (stack, tight, decoded + static).
+    # All other formats only support static string extraction.
+    cmd = ["floss", "-j"]
+    if not is_pe:
+        cmd += ["--only", "static"]
+    cmd.append(path)
+    out, err_txt, rc, ms, err = _run(cmd, TIMEOUTS["floss"])
 
     if err == "not_found":
         return {"static_strings":[], "stack_strings":[], "decoded_strings":[], "raw_stdout": "", "raw_stderr": ""}, \
@@ -212,7 +218,7 @@ def run_floss(path):
 # ─────────────────────────── capa ────────────────────────────────────────────
 
 def run_capa(path):
-    out, err_txt, rc, ms, err = _run(["capa", "--json", path], TIMEOUTS["capa"])
+    out, err_txt, rc, ms, err = _run(["capa", "--json", "-r", CAPA_RULES, path], TIMEOUTS["capa"])
     if err == "not_found":
         return {"error":"not_found","capabilities":[],"attack":[], "raw_stdout": "", "raw_stderr": ""}, \
                _tool_run("capa","not_found",ms,error="capa not found")
@@ -423,7 +429,7 @@ def main():
     tool_runs.append(yara_tr)
 
     # FLOSS
-    floss_res, floss_tr = run_floss(path)
+    floss_res, floss_tr = run_floss(path, is_pe=(family == "pe"))
     tool_runs.append(floss_tr)
 
     # Conditional
