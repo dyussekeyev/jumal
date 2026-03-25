@@ -421,11 +421,13 @@ class JUMALApp:
             # LLM streaming
             content_parts = []
             try:
-                self.text_vt_analysis.config(state=tk.NORMAL)
+                self.root.after(0, lambda: self.text_vt_analysis.config(state=tk.NORMAL))
                 for chunk in self.llm_client.stream_chat(prompt):
                     content_parts.append(chunk)
-                    self.text_vt_analysis.insert(tk.END, chunk)
-                    self.text_vt_analysis.see(tk.END)
+                    self.root.after(0, lambda c=chunk: (
+                        self.text_vt_analysis.insert(tk.END, c),
+                        self.text_vt_analysis.see(tk.END),
+                    ))
                     time.sleep(0.005)
             except LLMAuthError as e:
                 self.logger.error("LLM auth error")
@@ -438,7 +440,7 @@ class JUMALApp:
                 self._status_message(self._t("status_error"))
                 return
             finally:
-                self.text_vt_analysis.config(state=tk.DISABLED)
+                self.root.after(0, lambda: self.text_vt_analysis.config(state=tk.DISABLED))
 
             full = "".join(content_parts)
             parsed_json, free_text = self.summarizer.extract_json_and_text(full)
@@ -745,6 +747,37 @@ class JUMALApp:
             messagebox.showerror(self._t("status_error"), self._t("err_clipboard"))
 
     # ------------- Report Save Handlers -------------
+    def _save_report_files(self, report_obj: Dict[str, Any], text_content: str, prefix: str, label: str) -> bool:
+        """
+        Write a JSON report and a TXT summary to the output directory.
+        
+        Returns True on success, False on error (shows messagebox on failure).
+        """
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+        out_dir = self.config.get("output", {}).get("directory", "reports")
+        os.makedirs(out_dir, exist_ok=True)
+
+        json_path = os.path.join(out_dir, f"{prefix}_{label}_{ts}.json")
+        try:
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(report_obj, f, indent=2, ensure_ascii=False, default=str)
+        except Exception as e:
+            messagebox.showerror(self._t("status_error"), f"Failed to save report: {e}")
+            return False
+
+        txt_path = os.path.join(out_dir, f"{prefix}_{label}_{ts}.txt")
+        try:
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write(text_content)
+        except Exception as e:
+            messagebox.showerror(self._t("status_error"), f"Failed to write context: {e}")
+            return False
+
+        messagebox.showinfo(self._t("msg_saved"), f"{self._t('msg_saved')}\n{json_path}\n{txt_path}")
+        return True
+
     def _on_save_vt_report(self):
         """Save the VT-only analysis result as JSON + TXT reports."""
         content_summary = self.text_vt_analysis.get("1.0", tk.END).strip()
@@ -768,15 +801,9 @@ class JUMALApp:
                 pass
 
         hash_input = self.entry_hash.get().strip()
-        from datetime import datetime, timezone
-        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-
-        out_dir = self.config.get("output", {}).get("directory", "reports")
-        os.makedirs(out_dir, exist_ok=True)
 
         report_obj = {
             "hash": hash_input,
-            "timestamp_utc": ts,
             "vt_raw": vt_data,
             "summary": {
                 **(parsed_json or {}),
@@ -792,24 +819,7 @@ class JUMALApp:
             }
         }
 
-        label = hash_input or "unknown"
-        json_path = os.path.join(out_dir, f"report_{label}_{ts}.json")
-        try:
-            with open(json_path, "w", encoding="utf-8") as f:
-                json.dump(report_obj, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            messagebox.showerror(self._t("status_error"), f"Failed to save report: {e}")
-            return
-
-        txt_path = os.path.join(out_dir, f"report_{label}_{ts}.txt")
-        try:
-            with open(txt_path, "w", encoding="utf-8") as f:
-                f.write(content_summary)
-        except Exception as e:
-            messagebox.showerror(self._t("status_error"), f"Failed to write context: {e}")
-            return
-
-        messagebox.showinfo(self._t("msg_saved"), f"{self._t('msg_saved')}\n{json_path}\n{txt_path}")
+        self._save_report_files(report_obj, content_summary, "report", hash_input or "unknown")
 
     def _on_save_file_report(self):
         """Save the File Analysis result as JSON + TXT reports."""
@@ -820,15 +830,8 @@ class JUMALApp:
         hashes = pipeline.hashes if pipeline else {}
         file_label = hashes.get("sha256") or hashes.get("md5") or "unknown"
 
-        from datetime import datetime, timezone
-        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-
-        out_dir = self.config.get("output", {}).get("directory", "reports")
-        os.makedirs(out_dir, exist_ok=True)
-
         report_obj = {
             "file_label": file_label,
-            "timestamp_utc": ts,
             "hashes": hashes,
             "vt_raw": pipeline.vt_raw if pipeline else {},
             "analysis_text": content_text,
@@ -842,23 +845,7 @@ class JUMALApp:
             }
         }
 
-        json_path = os.path.join(out_dir, f"file_report_{file_label[:16]}_{ts}.json")
-        try:
-            with open(json_path, "w", encoding="utf-8") as f:
-                json.dump(report_obj, f, indent=2, ensure_ascii=False, default=str)
-        except Exception as e:
-            messagebox.showerror(self._t("status_error"), f"Failed to save report: {e}")
-            return
-
-        txt_path = os.path.join(out_dir, f"file_report_{file_label[:16]}_{ts}.txt")
-        try:
-            with open(txt_path, "w", encoding="utf-8") as f:
-                f.write(content_text)
-        except Exception as e:
-            messagebox.showerror(self._t("status_error"), f"Failed to write context: {e}")
-            return
-        
-        messagebox.showinfo(self._t("msg_saved"), f"{self._t('msg_saved')}\n{json_path}\n{txt_path}")
+        self._save_report_files(report_obj, content_text, "file_report", file_label[:16])
 
     def _on_save_raw(self):
         """Save Raw output text to a user-chosen file."""
@@ -877,8 +864,12 @@ class JUMALApp:
         )
         if not path:
             return
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(text)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(text)
+        except Exception as e:
+            messagebox.showerror(self._t("status_error"), f"Failed to save file: {e}")
+            return
         messagebox.showinfo(self._t("msg_saved"), f"{self._t('msg_saved')}\n{path}")
 
     def run(self):

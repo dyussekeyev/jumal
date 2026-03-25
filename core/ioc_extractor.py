@@ -1,5 +1,7 @@
 from typing import Dict, Any, Optional
 
+from core.config import LOCALE_NAMES
+
 
 class IOCExtractor:
     """
@@ -220,12 +222,7 @@ Keep the format clean and easy to copy. List each unique indicator once."""
         
         # Get UI locale for language adaptation
         ui_locale = self.config.get("ui", {}).get("default_language", "en")
-        locale_map = {
-            "en": "English",
-            "ru": "Russian",
-            "kz": "Kazakh"
-        }
-        locale_name = locale_map.get(ui_locale, "English")
+        locale_name = LOCALE_NAMES.get(ui_locale, "English")
         
         # Raw mode path
         self.logger.info(f"IOC raw extraction using model={ioc_model}, locale={ui_locale}")

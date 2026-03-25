@@ -75,7 +75,7 @@ class Aggregator:
         return yara_res, sigma_res
 
     def _extract_ips(self, text: str) -> List[str]:
-        """Extract IPv4 addresses from text."""
+        """Extract IPv4 addresses from text, excluding non-routable addresses."""
         # IPv4 pattern
         ipv4_pattern = r'\b(?:\d{1,3}\.){3}\d{1,3}\b'
         ips = re.findall(ipv4_pattern, text)
@@ -83,8 +83,14 @@ class Aggregator:
         valid_ips = []
         for ip in ips:
             parts = ip.split('.')
-            if all(0 <= int(p) <= 255 for p in parts):
-                valid_ips.append(ip)
+            if not all(0 <= int(p) <= 255 for p in parts):
+                continue
+            first = int(parts[0])
+            # Skip non-routable / noise addresses:
+            #   0.x.x.x, 127.x.x.x (loopback), 224-255.x.x.x (multicast/reserved)
+            if first == 0 or first == 127 or first >= 224:
+                continue
+            valid_ips.append(ip)
         return valid_ips
 
     def _extract_domains(self, text: str) -> List[str]:
@@ -152,12 +158,12 @@ class Aggregator:
 
     def _deduplicate_preserve_case(self, items: List[str]) -> List[str]:
         """Deduplicate list case-insensitively but preserve original casing."""
-        seen = {}
+        seen = set()
         result = []
         for item in items:
             lower = item.lower()
             if lower not in seen:
-                seen[lower] = True
+                seen.add(lower)
                 result.append(item)
         return result
 

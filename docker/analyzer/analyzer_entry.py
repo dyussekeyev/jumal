@@ -300,7 +300,13 @@ def run_office(path):
     status = "ok" if (not err and rc == 0) else ("timeout" if err=="timeout" else "error")
     runs.append(_tool_run("oledump", status, ms, err_txt, error=err or ""))
     if not err and out:
-        streams = [{"line": l.strip()[:200], "has_macro": "M" in l or "m" in l}
+        # oledump marks macro streams with 'M' or 'm' as a single-char
+        # indicator near the start of the line (e.g. " A: M    1234 ...").
+        # Checking "M" in l would false-positive on any line containing M/m.
+        import re
+        _macro_indicator_re = re.compile(r'^\s*\w+:\s+[Mm]\s')
+        streams = [{"line": l.strip()[:200],
+                     "has_macro": bool(_macro_indicator_re.match(l))}
                    for l in out.strip().splitlines() if l.strip()]
         result["oledump"] = {"streams": streams[:50]}
 

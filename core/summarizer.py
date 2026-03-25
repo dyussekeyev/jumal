@@ -1,6 +1,8 @@
 import json
 from typing import Dict, Any, Optional
 
+from core.config import LOCALE_NAMES
+
 class Summarizer:
     def __init__(self, logger, config: Optional[Dict[str, Any]] = None):
         """
@@ -82,12 +84,7 @@ class Summarizer:
         """
         # Get UI locale for language adaptation
         ui_locale = self.config.get("ui", {}).get("default_language", "en")
-        locale_map = {
-            "en": "English",
-            "ru": "Russian",
-            "kz": "Kazakh"
-        }
-        locale_name = locale_map.get(ui_locale, "English")
+        locale_name = LOCALE_NAMES.get(ui_locale, "English")
         
         b = aggregated.get("basic", {})
         lines = []
@@ -138,59 +135,45 @@ class Summarizer:
         full_prompt = f"{system_with_locale}\n\n{user_prompt}"
         return full_prompt
 
-    def extract_json_and_text(self, full_response: str):
+    def extract_json_and_text(self, full_response: str, pretty: bool = False):
         """
         Extract JSON and free text from LLM response.
         
         Args:
             full_response: Full LLM response text
+            pretty: If True, also return a pretty-printed JSON string
             
         Returns:
-            Tuple of (parsed_json or None, free_text)
+            If pretty=False: Tuple of (parsed_json or None, free_text)
+            If pretty=True:  Tuple of (parsed_json or None, pretty_json_str or None, free_text)
         """
         parsed = None
-        json_text = None
         free_text = full_response
+        json_str = None
         
         # Use common extraction method
         candidate = self.extract_first_json_block(full_response)
         if candidate:
             try:
                 parsed = json.loads(candidate)
-                # Re-serialize with ensure_ascii=False to preserve Unicode characters
-                # Use compact separators to normalize output
-                json_text = json.dumps(parsed, ensure_ascii=False, separators=(',', ':'))
+                if pretty:
+                    json_str = json.dumps(parsed, ensure_ascii=False, indent=2)
                 # Remove only the first occurrence of the original JSON block
                 free_text = full_response.replace(candidate, "", 1).strip()
             except Exception as e:
                 self.logger.warning(f"JSON parse failed: {e}")
         
+        if pretty:
+            return parsed, json_str, free_text
         return parsed, free_text
     
     def extract_json_pretty(self, full_response: str):
         """
         Extract JSON and free text from LLM response with pretty-printed JSON.
         
-        Args:
-            full_response: Full LLM response text
-            
+        Convenience wrapper around extract_json_and_text(pretty=True).
+        
         Returns:
             Tuple of (parsed_json or None, pretty_json_str or None, free_text)
         """
-        parsed = None
-        pretty_json_str = None
-        free_text = full_response
-        
-        # Use common extraction method
-        candidate = self.extract_first_json_block(full_response)
-        if candidate:
-            try:
-                parsed = json.loads(candidate)
-                # Pretty-print with ensure_ascii=False to preserve Unicode characters
-                pretty_json_str = json.dumps(parsed, ensure_ascii=False, indent=2)
-                # Remove only the first occurrence of the original JSON block
-                free_text = full_response.replace(candidate, "", 1).strip()
-            except Exception as e:
-                self.logger.warning(f"JSON parse failed: {e}")
-        
-        return parsed, pretty_json_str, free_text
+        return self.extract_json_and_text(full_response, pretty=True)

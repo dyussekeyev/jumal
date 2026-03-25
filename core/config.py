@@ -3,6 +3,13 @@ import json
 import os
 from typing import Any, Dict
 
+# Shared locale code → display name mapping used across the application.
+LOCALE_NAMES = {
+    "en": "English",
+    "ru": "Russian",
+    "kz": "Kazakh",
+}
+
 DEFAULT_CONFIG = {
     "virustotal": {
         "api_key": "PUT_YOUR_VT_API_KEY_HERE",
