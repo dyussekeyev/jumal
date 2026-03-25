@@ -9,7 +9,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from analysis.local_static.context_builder import CombinedContextBuilder, _compact_strings
+from analysis.local_static.context_builder import CombinedContextBuilder
 from analysis.local_static.models import (
     FileAnalysisPipelineResult,
     StaticAnalysisResult,
@@ -47,31 +47,6 @@ def _make_pipeline(static=None, vt_status=VTFileStatus.SKIPPED, vt_raw=None) -> 
         vt_status=vt_status,
         vt_raw=vt_raw,
     )
-
-
-class TestCompactStrings(unittest.TestCase):
-    def test_empty_input(self):
-        self.assertEqual(_compact_strings([]), [])
-
-    def test_max_count_respected(self):
-        strings = [f"benign_string_{i}" for i in range(100)]
-        result = _compact_strings(strings, max_count=10)
-        self.assertLessEqual(len(result), 10)
-
-    def test_suspicious_strings_ranked_first(self):
-        strings = ["hello", "world", "http://evil.example.com/payload", "benign"]
-        result = _compact_strings(strings, max_count=4)
-        self.assertEqual(result[0], "http://evil.example.com/payload")
-
-    def test_multiple_suspicious_patterns(self):
-        strings = [
-            "powershell -enc base64data",   # 2 patterns
-            "http://malware.example/",       # 1 pattern
-            "CreateProcess notepad.exe",     # 1 pattern
-            "random normal string",          # 0 patterns
-        ]
-        result = _compact_strings(strings, max_count=4)
-        self.assertEqual(result[0], "powershell -enc base64data")
 
 
 class TestBuildVTLines(unittest.TestCase):
@@ -179,7 +154,7 @@ class TestBuildStaticLines(unittest.TestCase):
         )
         lines = self.builder._build_static_lines(static)
         text = "\n".join(lines)
-        self.assertIn("SUSPICIOUS STRINGS", text)
+        self.assertIn("STATIC STRINGS", text)
         self.assertIn("http://c2.example.com/bot", text)
         self.assertIn("STACK STRINGS", text)
         self.assertIn("loaded_secret", text)

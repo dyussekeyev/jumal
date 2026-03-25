@@ -1,9 +1,0 @@
-# This file is kept for reference only.
-# Use the root-level compose.yaml instead:
-#
-#   cd /path/to/jumal
-#   docker compose up -d
-#
-# Running docker compose from this subdirectory will fail with
-# "no configuration file provided: not found" because there is no
-# compose.yaml here. Always run from the repository root.

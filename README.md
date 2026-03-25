@@ -83,7 +83,7 @@ Run from the **repository root** (where `compose.yaml` lives):
 docker compose up -d
 ```
 
-> ⚠ **Common mistake:** running `docker compose up` from `docker/analyzer/` or `ollama/`  
+> ⚠ **Common mistake:** running `docker compose up` from a subdirectory  
 > will produce `no configuration file provided: not found`.  
 > Always run from the repository root.
 
