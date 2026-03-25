@@ -3,6 +3,7 @@ import re
 import logging
 from typing import Dict, Any, List, Optional
 
+from core.config import LOCALE_NAMES
 from .models import FileAnalysisPipelineResult, StaticAnalysisResult, VTFileStatus
 
 
@@ -324,8 +325,7 @@ class CombinedContextBuilder:
 
         VT ordering is preserved exactly as in Summarizer.build_prompt.
         """
-        locale_map = {"en": "English", "ru": "Russian", "kz": "Kazakh"}
-        locale_name = locale_map.get(locale, "English")
+        locale_name = LOCALE_NAMES.get(locale, "English")
 
         lines: List[str] = []
 
