@@ -424,10 +424,7 @@ class JUMALApp:
                 self.root.after(0, lambda: self.text_vt_analysis.config(state=tk.NORMAL))
                 for chunk in self.llm_client.stream_chat(prompt):
                     content_parts.append(chunk)
-                    self.root.after(0, lambda c=chunk: (
-                        self.text_vt_analysis.insert(tk.END, c),
-                        self.text_vt_analysis.see(tk.END),
-                    ))
+                    self.root.after(0, self._stream_append_vt, chunk)
                     time.sleep(0.005)
             except LLMAuthError as e:
                 self.logger.error("LLM auth error")
@@ -521,6 +518,11 @@ class JUMALApp:
         """Append a streaming LLM chunk to the file analysis text area (must be called from UI thread)."""
         self.text_file_analysis.insert(tk.END, chunk)
         self.text_file_analysis.see(tk.END)
+
+    def _stream_append_vt(self, chunk: str):
+        """Append a streaming LLM chunk to the VT analysis text area (must be called from UI thread)."""
+        self.text_vt_analysis.insert(tk.END, chunk)
+        self.text_vt_analysis.see(tk.END)
 
     def _process_file(self, file_path: str):
         """Run the full file analysis pipeline in a background thread."""
@@ -751,10 +753,12 @@ class JUMALApp:
         """
         Write a JSON report and a TXT summary to the output directory.
         
+        Adds a ``timestamp_utc`` field to *report_obj* before writing.
         Returns True on success, False on error (shows messagebox on failure).
         """
         from datetime import datetime, timezone
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        report_obj["timestamp_utc"] = ts
 
         out_dir = self.config.get("output", {}).get("directory", "reports")
         os.makedirs(out_dir, exist_ok=True)
