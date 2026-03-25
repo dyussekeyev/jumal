@@ -363,42 +363,25 @@ def run_pdf(path):
 
 # ─────────────────────────── risk hints ──────────────────────────────────────
 
-_STRING_HINTS = {
-    "contains_powershell":        ["powershell","invoke-expression","iex(","encodedcommand"],
-    "contains_cmd_execution":     ["cmd.exe","cmd /c","shell.run"],
-    "contains_base64":            ["base64","frombase64string"],
-    "contains_network_call":      ["http://","https://","socket","wininet","urldownload"],
-    "contains_process_injection": ["virtualalloc","writeprocessmemory","createremotethread"],
-    "contains_persistence":       ["run\\","runonce\\","startup","schtasks"],
-    "packed_or_encrypted":        ["upx","packer","cipher","aes","rc4"],
-}
-
 
 def build_risk_hints(die_info, generic, specialized):
+    """Build risk hints from tool-level results (YARA, capa, office, PDF)."""
     hints = []
-    if generic.get("yara",{}).get("matches"):
+    if generic.get("yara", {}).get("matches"):
         hints.append("yara_rules_matched")
 
-    all_strs = (generic.get("floss",{}).get("static_strings",[]) +
-                generic.get("floss",{}).get("decoded_strings",[]) +
-                generic.get("floss",{}).get("stack_strings",[]))
-    low = [s.lower() for s in all_strs[:500] if isinstance(s,str)]
-    for hint, kws in _STRING_HINTS.items():
-        if any(any(k in s for k in kws) for s in low):
-            hints.append(hint)
-
-    office = specialized.get("office",{})
+    office = specialized.get("office", {})
     if office:
-        v = office.get("mraptor",{}).get("verdict","")
-        if v in ("suspicious","malicious"):
+        v = office.get("mraptor", {}).get("verdict", "")
+        if v in ("suspicious", "malicious"):
             hints.append(f"office_macro_{v}")
-        if office.get("olevba",{}).get("suspicious_keywords"):
+        if office.get("olevba", {}).get("suspicious_keywords"):
             hints.append("office_macro_suspicious_keywords")
 
-    if specialized.get("pdf",{}).get("pdfid",{}).get("suspicious"):
+    if specialized.get("pdf", {}).get("pdfid", {}).get("suspicious"):
         hints.append("pdf_suspicious_indicators")
 
-    capa = specialized.get("capa",{})
+    capa = specialized.get("capa", {})
     if capa and not capa.get("error") and capa.get("capabilities"):
         hints.append("capa_capabilities_detected")
 

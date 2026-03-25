@@ -1,45 +1,9 @@
 import json
-import re
 import logging
 from typing import Dict, Any, List, Optional
 
 from core.config import LOCALE_NAMES
 from .models import FileAnalysisPipelineResult, StaticAnalysisResult, VTFileStatus
-
-
-_SUSPICIOUS_STRING_PATTERNS = [
-    r"http[s]?://",
-    r"cmd\.exe",
-    r"powershell",
-    r"wscript",
-    r"cscript",
-    r"HKEY_",
-    r"HKLM\\",
-    r"HKCU\\",
-    r"CreateProcess",
-    r"VirtualAlloc",
-    r"WriteProcessMemory",
-    r"GetProcAddress",
-    r"LoadLibrary",
-    r"base64",
-    r"WinExec",
-    r"ShellExecute",
-    r"RegSetValue",
-]
-
-
-def _compact_strings(strings: List[str], max_count: int = 50) -> List[str]:
-    """Return the *max_count* most suspicious strings from *strings*."""
-    if not strings:
-        return []
-    scored = []
-    for s in strings:
-        score = sum(
-            1 for p in _SUSPICIOUS_STRING_PATTERNS if re.search(p, s, re.IGNORECASE)
-        )
-        scored.append((score, s))
-    scored.sort(key=lambda x: -x[0])
-    return [s for _, s in scored[:max_count]]
 
 
 class CombinedContextBuilder:
@@ -140,16 +104,16 @@ class CombinedContextBuilder:
                     lines.append(f"- {m}")
             lines.append("")
 
-        # FLOSS strings (compacted)
+        # FLOSS strings (truncated to limit)
         floss = generic.get("floss", {})
         static_strs = floss.get("static_strings", [])
         if static_strs:
-            top = _compact_strings(static_strs, self.MAX_STRINGS)
-            if top:
+            show = static_strs[: self.MAX_STRINGS]
+            if show:
                 lines.append(
-                    f"SUSPICIOUS STRINGS (top {len(top)} of {len(static_strs)} static):"
+                    f"STATIC STRINGS ({len(static_strs)} found, showing {len(show)}):"
                 )
-                for s in top:
+                for s in show:
                     lines.append(f"  {str(s)[:120]}")
                 lines.append("")
 
