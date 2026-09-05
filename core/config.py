@@ -24,7 +24,10 @@ DEFAULT_CONFIG = {
         "api_key": "PUT_YOUR_LLM_API_KEY_HERE",
         "model": "meta-llama/llama-3.2-1b-instruct",
         "system_prompt": "You are a malware analysis assistant. Provide concise, structured malware assessments.",
-        "stream_enabled": True
+        "stream_enabled": True,
+        "ioc_model": null,
+        "ioc_raw_system_prompt": "You are a DFIR (Digital Forensics and Incident Response) assistant specializing in malware analysis. Your task is to extract and present Indicators of Compromise (IOCs) from malware behavior data in a clear, structured markdown format. Focus on factual indicators only - no speculation or analysis.",
+        "ioc_raw_user_template": "Based on the following malware behavior data, extract and organize all Indicators of Compromise into a clear markdown report.\n\n{CONTEXT}\n\nPlease organize the IOCs into the following sections using markdown headings (##). Include a brief introductory sentence, then list indicators using bullet points (-). If a section has no indicators, write \"(none found)\".\n\nIMPORTANT GUIDELINES:\n- List only indicators actually observed in the provided data - do not guess or extrapolate\n- Deduplicate indicators within each section (case-insensitive comparison)\n- Preserve the original casing of indicators in output\n- File Names: Just the filename (e.g., \"malware.exe\"), not the full path\n- File Paths: Complete paths (e.g., \"C:\\Windows\\Temp\\malware.exe\")\n- IP Addresses: Only numeric IP addresses (IPv4/IPv6)\n- Domains: Only domain names, not IPs\n- URLs: Complete HTTP/HTTPS URLs\n\nRequired sections:\n- ## File Names\n- ## Processes\n- ## Network IPs\n- ## Network Domains\n- ## URLs\n- ## File Paths\n- ## Registry Keys\n- ## Mutexes\n- ## YARA Rules\n- ## Sigma Rules\n- ## Other IOCs\n\nKeep the format clean and easy to copy. List each unique indicator once."
     },
     "ui": {
         "default_language": "en"
